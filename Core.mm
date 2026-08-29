@@ -1,291 +1,249 @@
+// Core.mm — WolFox: all Objective-C modules (single-file build)
+// Target: standalone dylib embedded in a signed IPA (non-jailbreak, ESign).
+// No MobileSubstrate / CydiaSubstrate dependencies anywhere.
+
 #import "WolFox.h"
 #import "Portable.h"
+#import <UIKit/UIKit.h>
+#import <CoreLocation/CoreLocation.h>
+#import <MapKit/MapKit.h>
+
+static NSString * const kSchemaLocation = @"wolfox.location/1";
 
 #pragma mark - WFLogger
 
-static NSString * const WFCategoryNames[] = {
-    @"CORE", @"LOCATION", @"MOVEMENT", @"RANDOM", @"ROUTE",
-    @"WIFI", @"DEVICE", @"SCHEDULER", @"STORAGE", @"UI"
-};
-
 @implementation WFLogger {
     dispatch_queue_t _logQueue;
+    NSMutableArray<NSString *> *_buffer;
 }
+
 + (instancetype)sharedLogger {
     static WFLogger *instance; static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{ instance = [[WFLogger alloc] init]; });
     return instance;
 }
+
 - (instancetype)init {
-    if ((self = [super init]))
-        _logQueue = dispatch_queue_create("com.wolfox.logger", DISPATCH_QUEUE_SERIAL);
-    return self;
-}
-- (void)logCategory:(WFLogCategory)category message:(NSString *)message {
-#if DEBUG
-    const BOOL shouldEmit = YES;
-#else
-    const BOOL shouldEmit = (category == WFLogCore || category == WFLogScheduler);
-#endif
-    if (!shouldEmit || message.length == 0) return;
-    NSString *line = [NSString stringWithFormat:@"[WolFox][%@] %@",
-                      WFCategoryNames[category], message];
-    dispatch_async(_logQueue, ^{ NSLog(@"%@", line); });
-}
-@end
-
-#pragma mark - WFError
-
-@interface WFError ()
-- (instancetype)initPrivateWithCode:(WFErrorCode)code humanText:(NSString *)human
-                          technical:(NSString *)technical;
-@end
-
-@implementation WFError
-+ (instancetype)errorWithCode:(WFErrorCode)code technical:(NSString *)technicalMessage {
-    return [[self alloc] initPrivateWithCode:code
-                                   humanText:[WFError humanTextForCode:code]
-                                   technical:technicalMessage ?: @""];
-}
-+ (instancetype)success {
-    return [[self alloc] initPrivateWithCode:WFErrorCodeSuccess
-                                   humanText:@"OK" technical:@""];
-}
-- (instancetype)initPrivateWithCode:(WFErrorCode)code humanText:(NSString *)human
-                          technical:(NSString *)technical {
     if ((self = [super init])) {
-        _errorCode = code;
-        _humanReadableMessage = [human copy];
-        _technicalMessage = [technical copy];
+        _logQueue = dispatch_queue_create("com.wolfox.logger", DISPATCH_QUEUE_SERIAL);
+        _buffer = [NSMutableArray array];
     }
     return self;
 }
-- (BOOL)isSuccess { return _errorCode == WFErrorCodeSuccess; }
-+ (NSString *)humanTextForCode:(WFErrorCode)code {
-    switch (code) {
-        case WFErrorCodeSuccess:            return @"Success.";
-        case WFErrorCodeInvalidInput:       return @"The provided value is invalid.";
-        case WFErrorCodeNotAvailable:       return @"This feature is not available right now.";
-        case WFErrorCodeNetworkError:       return @"A network request failed. Check connectivity.";
-        case WFErrorCodeConflict:           return @"Another simulation mode is already active.";
-        case WFErrorCodeStorageError:       return @"Saving data failed.";
-        case WFErrorCodeUnsupportedVersion: return @"This data file uses an unsupported format version.";
-        case WFErrorCodeRouteError:         return @"The route could not be created or followed.";
-    }
-    return @"Unknown error.";
+
+- (void)logCategory:(WFLogCategory)category message:(NSString *)message {
+    NSString *line = [NSString stringWithFormat:@"%@ [%@] %@",
+        [NSDate date], [self categoryName:category], message];
+    dispatch_async(_logQueue, ^{
+        [self->_buffer addObject:line];
+        if (self->_buffer.count > 500) [self->_buffer removeObjectAtIndex:0];
+        NSLog(@"WolFox %@", line);
+    });
 }
+
+- (NSString *)categoryName:(WFLogCategory)category {
+    switch (category) {
+        case WFLogCore:     return @"CORE";
+        case WFLogLocation: return @"LOC";
+        case WFLogMovement: return @"MOVE";
+        case WFLogStorage:  return @"STORE";
+        default:            return @"???";
+    }
+}
+
+- (NSArray<NSString *> *)recentLines { return [_buffer copy]; }
+
 @end
 
 #pragma mark - WFEventBus
 
-NSString * const WFEventLocationChanged      = @"WFEventLocationChanged";
-NSString * const WFEventRuntimeStateChanged  = @"WFEventRuntimeStateChanged";
-NSString * const WFEventRouteProgressChanged = @"WFEventRouteProgressChanged";
-NSString * const WFEventErrorOccurred        = @"WFEventErrorOccurred";
-
 @implementation WFEventBus {
-    NSMutableDictionary<NSString *, NSMapTable<id, void (^)(NSDictionary *)> *> *_observers;
     dispatch_queue_t _busQueue;
+    NSMutableDictionary<NSString *, NSMutableArray<void (^)(NSDictionary *)> *> *_handlers;
 }
+
 + (instancetype)sharedBus {
     static WFEventBus *instance; static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{ instance = [[WFEventBus alloc] init]; });
     return instance;
 }
+
 - (instancetype)init {
     if ((self = [super init])) {
-        _observers = [NSMutableDictionary dictionary];
         _busQueue = dispatch_queue_create("com.wolfox.eventbus", DISPATCH_QUEUE_SERIAL);
+        _handlers = [NSMutableDictionary dictionary];
     }
     return self;
 }
-- (void)subscribe:(NSString *)eventName observer:(id)observer
-             block:(void (^)(NSDictionary *))block {
-    NSParameterAssert(eventName && observer && block);
+
+- (void)subscribe:(NSString *)event handler:(void (^)(NSDictionary *))handler {
     dispatch_sync(_busQueue, ^{
-        NSMapTable *table = _observers[eventName];
-        if (!table) {
-            table = [NSMapTable weakToStrongObjectsMapTable]; // weak observer: no cycles
-            _observers[eventName] = table;
-        }
-        [table setObject:block forKey:observer];
+        if (!self->_handlers[event]) self->_handlers[event] = [NSMutableArray array];
+        [self->_handlers[event] addObject:[handler copy]];
     });
 }
-- (void)unsubscribe:(id)observer {
-    dispatch_sync(_busQueue, ^{
-        for (NSMapTable *table in _observers.allValues) [table removeObjectForKey:observer];
-    });
-}
-- (void)publish:(NSString *)eventName payload:(NSDictionary *)payload {
-    NSDictionary *safePayload = [payload copy] ?: @{};
+
+- (void)publish:(NSString *)event payload:(NSDictionary *)payload {
     dispatch_async(_busQueue, ^{
-        NSMapTable *table = _observers[eventName];
-        NSMutableArray<void (^)(NSDictionary *)> *blocks = [NSMutableArray array];
-        for (id key in table) {
-            void (^block)(NSDictionary *) = [table objectForKey:key];
-            if (block) [blocks addObject:block];
+        for (void (^h)(NSDictionary *) in self->_handlers[event] ?: @[]) {
+            h(payload ?: @{});
         }
-        dispatch_async(dispatch_get_main_queue(), ^{
-            for (void (^block)(NSDictionary *) in blocks) block(safePayload);
-        });
     });
 }
+
 @end
 
 #pragma mark - WFRuntimeState
 
-@interface WFRuntimeState () <WFRuntimeStateMutable>
+@interface WFRuntimeState ()
+@property (nonatomic, assign, readwrite) BOOL locationEnabled;
+@property (nonatomic, assign, readwrite) double currentLatitude;
+@property (nonatomic, assign, readwrite) double currentLongitude;
+@property (nonatomic, assign, readwrite) WFLocationMode locationMode;
+@property (nonatomic, assign, readwrite) BOOL movementActive;
+@property (nonatomic, assign, readwrite) BOOL movementPaused;
+@property (nonatomic, assign, readwrite) double movementSpeed;
+@property (nonatomic, assign, readwrite) BOOL randomMovementActive;
+@property (nonatomic, assign, readwrite) BOOL routeActive;
+@property (nonatomic, assign, readwrite) BOOL routePaused;
+@property (nonatomic, assign, readwrite) BOOL schedulerActive;
+@property (nonatomic, copy, readwrite) NSString *lastAction;
+@property (nonatomic, copy, readwrite) NSString *lastError;
 @end
 
 @implementation WFRuntimeState {
     dispatch_queue_t _stateQueue;
 }
+
 + (instancetype)sharedState {
     static WFRuntimeState *instance; static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{ instance = [[WFRuntimeState alloc] init]; });
     return instance;
 }
+
 - (instancetype)init {
     if ((self = [super init])) {
-        _stateQueue = dispatch_queue_create("com.wolfox.runtimestate", DISPATCH_QUEUE_SERIAL);
-        [self resetToDefaultEnvironment];
+        _stateQueue = dispatch_queue_create("com.wolfox.state", DISPATCH_QUEUE_SERIAL);
+        _locationMode = WFLocationModeDefault;
+        _lastAction = @"Initialized";
+        _lastError = @"";
     }
     return self;
 }
-- (void)resetToDefaultEnvironment {
-    [self performUpdate:^(id<WFRuntimeStateMutable> s) {
-        s.locationEnabled = NO;
-        s.currentLatitude = 0.0;
-        s.currentLongitude = 0.0;
-        s.locationMode = WFLocationModeDefault;
-        s.movementActive = NO;
-        s.movementPaused = NO;
-        s.movementSpeed = 0.0;
-        s.movementCourse = 0.0;
-        s.randomMovementActive = NO;
-        s.randomRadius = 0.0;
-        s.routeActive = NO;
-        s.routePaused = NO;
-        s.routeProgress = 0.0;
-        s.routeDistanceRemaining = 0.0;
-        s.routeSpeed = 0.0;
-        s.activeWiFiProfileID = @"";
-        s.activeDeviceProfileID = @"";
-        s.schedulerActive = NO;
-        s.lastAction = @"Environment restored to default";
-        s.lastError = @"";
-    }];
-}
-- (void)performUpdate:(void (^)(id<WFRuntimeStateMutable>))updateBlock {
-    NSParameterAssert(updateBlock);
-    dispatch_sync(_stateQueue, ^{ updateBlock((id<WFRuntimeStateMutable>)self); });
+
+- (void)performUpdate:(void (^)(id<WFRuntimeStateMutable>))update {
+    dispatch_sync(_stateQueue, ^{
+        @synchronized (self) { update(self); }
+    });
     [[WFEventBus sharedBus] publish:WFEventRuntimeStateChanged
         payload:[self snapshotForUI]];
 }
+
 - (NSDictionary *)snapshotForUI {
-    __block NSDictionary *snapshot;
-    dispatch_sync(_stateQueue, ^{
-        snapshot = @{
-            @"locationEnabled": @(_locationEnabled),
-            @"latitude":        @(_currentLatitude),
-            @"longitude":       @(_currentLongitude),
-            @"locationMode":    @(_locationMode),
-            @"movementActive":  @(_movementActive),
-            @"movementPaused":  @(_movementPaused),
-            @"movementSpeed":   @(_movementSpeed),
-            @"movementCourse":  @(_movementCourse),
-            @"randomActive":    @(_randomMovementActive),
-            @"randomRadius":    @(_randomRadius),
-            @"routeActive":     @(_routeActive),
-            @"routePaused":     @(_routePaused),
-            @"routeProgress":   @(_routeProgress),
-            @"routeRemaining":  @(_routeDistanceRemaining),
-            @"routeSpeed":      @(_routeSpeed),
-            @"wifiProfile":     _activeWiFiProfileID ?: @"",
-            @"deviceProfile":   _activeDeviceProfileID ?: @"",
-            @"schedulerActive": @(_schedulerActive),
-            @"lastAction":      _lastAction ?: @"",
-            @"lastError":       _lastError ?: @"",
-        };
-    });
-    return snapshot;
+    WFRuntimeState *s = self;
+    return @{
+        @"locationEnabled": @(s.locationEnabled),
+        @"lat": @(s.currentLatitude),
+        @"lon": @(s.currentLongitude),
+        @"mode": @(s.locationMode),
+        @"movementActive": @(s.movementActive),
+        @"movementPaused": @(s.movementPaused),
+        @"movementSpeed": @(s.movementSpeed),
+        @"randomActive": @(s.randomMovementActive),
+        @"routeActive": @(s.routeActive),
+        @"routePaused": @(s.routePaused),
+        @"schedulerActive": @(s.schedulerActive),
+        @"lastAction": s.lastAction ?: @"",
+        @"lastError": s.lastError ?: @"",
+    };
 }
+
+@end
+
+#pragma mark - WFError
+
+@implementation WFError
+
++ (instancetype)success {
+    WFError *e = [[WFError alloc] init];
+    e->_code = WFErrorCodeNone;
+    e->_userMessage = @"";
+    e->_technical = @"";
+    e->_isSuccessValue = YES;
+    return e;
+}
+
++ (instancetype)errorWithCode:(WFErrorCode)code technical:(NSString *)technical {
+    WFError *e = [[WFError alloc] init];
+    e->_code = code;
+    e->_userMessage = [self userMessageForCode:code];
+    e->_technical = technical ?: @"";
+    e->_isSuccessValue = NO;
+    return e;
+}
+
++ (NSString *)userMessageForCode:(WFErrorCode)code {
+    switch (code) {
+        case WFErrorCodeInvalidInput:  return @"Invalid input.";
+        case WFErrorCodeConflict:      return @"Another mode is active. Stop it first.";
+        case WFErrorCodeNotAvailable:  return @"Feature not available yet.";
+        default:                       return @"Unknown error.";
+    }
+}
+
+- (BOOL)isSuccess { return _isSuccessValue; }
+
 @end
 
 #pragma mark - WFSettingsStore
 
-static NSString * const kStorePrefix = @"wolfox.";
-
 @implementation WFSettingsStore
+
 + (instancetype)sharedStore {
     static WFSettingsStore *instance; static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{ instance = [[WFSettingsStore alloc] init]; });
     return instance;
 }
-- (NSString *)prefixedKey:(NSString *)key {
-    if (key.length == 0) {
-        [[WFLogger sharedLogger] logCategory:WFLogStorage
-            message:@"Rejected empty settings key"];
-        return nil;
-    }
-    return [kStorePrefix stringByAppendingString:key];
+
+- (NSUserDefaults *)defaults {
+    return [NSUserDefaults standardUserDefaults];
 }
-- (void)setObjectForKey:(NSString *)key value:(id)value {
-    NSString *k = [self prefixedKey:key];
-    if (!k) return;
-    [[NSUserDefaults standardUserDefaults] setObject:value forKey:k];
+
+- (void)setDoubleForKey:(NSString *)key value:(double)value {
+    [self.defaults setDouble:value forKey:key];
+    [self.defaults synchronize];
 }
-- (id)objectForKey:(NSString *)key {
-    NSString *k = [self prefixedKey:key];
-    if (!k) return nil;
-    return [[NSUserDefaults standardUserDefaults] objectForKey:k];
-}
-- (void)setStringForKey:(NSString *)key value:(NSString *)value { [self setObjectForKey:key value:value]; }
-- (NSString *)stringForKey:(NSString *)key {
-    id v = [self objectForKey:key];
-    return [v isKindOfClass:[NSString class]] ? v : nil;
-}
-- (void)setDoubleForKey:(NSString *)key value:(double)value { [self setObjectForKey:key value:@(value)]; }
+
 - (double)doubleForKey:(NSString *)key {
-    id v = [self objectForKey:key];
-    return [v isKindOfClass:[NSNumber class]] ? [v doubleValue] : 0.0;
+    return [self.defaults doubleForKey:key];
 }
-- (void)setBoolForKey:(NSString *)key value:(BOOL)value { [self setObjectForKey:key value:@(value)]; }
-- (BOOL)boolForKey:(NSString *)key {
-    id v = [self objectForKey:key];
-    return [v isKindOfClass:[NSNumber class]] ? [v boolValue] : NO;
+
+- (void)setArrayForKey:(NSString *)key value:(NSArray *)value {
+    [self.defaults setObject:value forKey:key];
+    [self.defaults synchronize];
 }
-- (void)setArrayForKey:(NSString *)key value:(NSArray *)value { [self setObjectForKey:key value:value]; }
+
 - (NSArray *)arrayForKey:(NSString *)key {
-    id v = [self objectForKey:key];
-    return [v isKindOfClass:[NSArray class]] ? v : @[];
+    return [self.defaults arrayForKey:key];
 }
-- (void)setDictionaryForKey:(NSString *)key value:(NSDictionary *)value { [self setObjectForKey:key value:value]; }
-- (NSDictionary *)dictionaryForKey:(NSString *)key {
-    id v = [self objectForKey:key];
-    return [v isKindOfClass:[NSDictionary class]] ? v : @{};
-}
-- (void)removeKey:(NSString *)key {
-    NSString *k = [self prefixedKey:key];
-    if (!k) return;
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:k];
-}
+
 @end
 
 #pragma mark - WFLocationModel
 
-static NSString *const kSchemaLocation = @"wolfox.location/1";
+@implementation WFLocationModel {
+    NSString *_locationID;
+    NSString *_name;
+    double   _latitude;
+    double   _longitude;
+    NSDate  *_createdAt;
+}
 
-@interface WFLocationModel ()
-@property (nonatomic, copy, readwrite) NSString *locationID;
-@property (nonatomic, copy, readwrite) NSString *name;
-@property (nonatomic, readwrite) double latitude;
-@property (nonatomic, readwrite) double longitude;
-
-@property (nonatomic, copy, readwrite) NSDate *createdAt;
-@end
-
-@implementation WFLocationModel
+@synthesize locationID = _locationID;
+@synthesize name = _name;
+@synthesize latitude = _latitude;
+@synthesize longitude = _longitude;
+@synthesize createdAt = _createdAt;
 
 + (instancetype)locationWithName:(NSString *)name latitude:(double)latitude
                        longitude:(double)longitude {
@@ -343,10 +301,6 @@ static NSString *const kSchemaLocation = @"wolfox.location/1";
 static NSString *const kFavoritesKey = @"wolfox.favorites.v1";
 static NSString *const kLastLatKey   = @"wolfox.lastLatitude";
 static NSString *const kLastLonKey   = @"wolfox.lastLongitude";
-
-@interface WFLocationModel ()
-@property (nonatomic, copy, readwrite) NSString *name;
-@end
 
 @implementation WFLocationService
 
@@ -685,8 +639,8 @@ static NSString *const kLastLonKey   = @"wolfox.lastLongitude";
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         [[WFLogger sharedLogger] logCategory:WFLogCore
-            message:@"WolFox initialize (authorized testing platform)"];
-        // Recovery: never resume movement/random/route across launches (§30).
+            message:@"WolFox initialize (standalone dylib, non-jailbreak)"];
+        // Recovery: never resume movement/random/route across launches.
         [[WFRuntimeState sharedState] performUpdate:^(id<WFRuntimeStateMutable> s) {
             s.movementActive       = NO;
             s.movementPaused       = NO;
@@ -723,7 +677,7 @@ static NSString *const kLastLonKey   = @"wolfox.lastLongitude";
         return [WFError errorWithCode:WFErrorCodeConflict
                             technical:[NSString stringWithFormat:@"mode %ld active", (long)mode]];
     }
-    [self stopMovement]; // stop any non-conflicting active engine first
+    [self stopMovement];
 
     __weak typeof(self) weakSelf = self;
     self.movementEngine = [[WFMovementEngine alloc] init];
@@ -732,7 +686,7 @@ static NSString *const kLastLonKey   = @"wolfox.lastLongitude";
                toLatitude:toLat longitude2:toLon
                     speed:metersPerSecond
            updateInterval:1.0
-                   onTick:nil   // UI updates via WFEventLocationChanged
+                   onTick:nil
                 onComplete:^{ [weakSelf resetMovementState:@"Movement finished"]; }];
     if (err.isSuccess) {
         [[WFRuntimeState sharedState] performUpdate:^(id<WFRuntimeStateMutable> s) {
@@ -780,7 +734,7 @@ static NSString *const kLastLonKey   = @"wolfox.lastLongitude";
 }
 
 - (void)resetMovementState:(NSString *)action {
-    self.movementEngine = nil; // engine stop is a safety net via dealloc invalidation
+    self.movementEngine = nil;
     [[WFRuntimeState sharedState] performUpdate:^(id<WFRuntimeStateMutable> s) {
         if (s.locationMode == WFLocationModeMovement) s.locationMode = WFLocationModeDefault;
         s.movementActive = NO;
@@ -790,7 +744,7 @@ static NSString *const kLastLonKey   = @"wolfox.lastLongitude";
     }];
 }
 
-#pragma mark Phases 4–9 (honest NotAvailable stubs, spec §45)
+#pragma mark Phases 4-9 (honest NotAvailable stubs)
 
 - (WFError *)startRandomMovementWithRadius:(double)radiusMeters {
     return [WFError errorWithCode:WFErrorCodeNotAvailable technical:@"Phase 4 pending"];
@@ -810,3 +764,12 @@ static NSString *const kLastLonKey   = @"wolfox.lastLongitude";
 
 @end
 
+#pragma mark - Standalone Entry Point (non-jailbreak, IPA-embedded)
+
+// Replaces the Logos %ctor from Tweak.x. Runs when the dylib is loaded
+// by the host app (injected into the signed IPA). No substrate required.
+__attribute__((constructor)) static void WolFoxStandaloneInit(void) {
+    @autoreleasepool {
+        [[WFAppManager sharedManager] initialize];
+    }
+}
