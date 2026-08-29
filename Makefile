@@ -3,13 +3,11 @@ ARCHS := arm64
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = WolFox
+LIBRARY_NAME = WolFox
 
-WolFox_FILES = Tweak.x Core.mm Portable.cpp
+WolFox_FILES = Core.mm Portable.cpp
 WolFox_FRAMEWORKS = Foundation UIKit CoreLocation MapKit
 WolFox_CFLAGS = -fobjc-arc -std=c++17 -D_USE_MATH_DEFINES
+WolFox_LDFLAGS = -Wl,-install_name,WolFox.dylib
 
-include $(THEOS_MAKE_PATH)/tweak.mk
-
-after-stage::
-	cp WolFoxTargetBundles.txt $(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/
+include $(THEOS_MAKE_PATH)/library.mk
