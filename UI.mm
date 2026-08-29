@@ -136,7 +136,9 @@
     b.backgroundColor = [tint colorWithAlphaComponent:0.23];
     [b setTitle:title forState:UIControlStateNormal];
     [b setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    b.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+    b.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    b.titleLabel.adjustsFontSizeToFitWidth = YES;
+    b.titleLabel.minimumScaleFactor = 0.78;
     return b;
 }
 
@@ -200,18 +202,20 @@
 
     CGFloat sw = CGRectGetWidth(root.bounds);
     CGFloat sh = CGRectGetHeight(root.bounds);
-    CGFloat pw = MIN(390.0, sw - 28.0);
-    CGFloat ph = MIN(790.0, sh - 55.0);
+    CGFloat pw = MIN(376.0, sw - 34.0);
+    CGFloat ph = MIN(820.0, sh - 42.0);
     CGFloat px = (sw-pw)/2.0;
-    CGFloat py = MAX(24.0, (sh-ph)/2.0);
+    CGFloat py = MAX(18.0, (sh-ph)/2.0);
 
     UIScrollView *panel = [[UIScrollView alloc] initWithFrame:CGRectMake(px, py, pw, ph)];
     panel.backgroundColor = [self panelColor];
     panel.layer.cornerRadius = 28;
     panel.layer.masksToBounds = YES;
+    panel.layer.borderWidth = 1.0;
+    panel.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.08].CGColor;
     panel.showsVerticalScrollIndicator = NO;
 
-    UIView *content = [[UIView alloc] initWithFrame:CGRectMake(0,0,pw,1040)];
+    UIView *content = [[UIView alloc] initWithFrame:CGRectMake(0,0,pw,1090)];
     [panel addSubview:content];
     panel.contentSize = content.bounds.size;
 
@@ -221,24 +225,24 @@
     _floatingButton.hidden = YES;
 
     CGFloat W = pw;
-    CGFloat margin = 15;
+    CGFloat margin = 14;
     CGFloat inner = W - margin*2;
 
     // Header
-    UILabel *logo = [self label:@"\U0001F98A  WolFox" frame:CGRectMake(18,16,175,38) size:24 bold:YES];
+    UILabel *logo = [self label:@"\U0001F98A  WolFox" frame:CGRectMake(18,14,178,36) size:24 bold:YES];
     [content addSubview:logo];
 
-    UILabel *sub = [self label:@"Standalone Runtime" frame:CGRectMake(70,48,170,18) size:11 bold:NO];
+    UILabel *sub = [self label:@"Standalone Runtime" frame:CGRectMake(70,44,180,18) size:11 bold:NO];
     sub.textColor = [UIColor colorWithWhite:1 alpha:0.45];
     [content addSubview:sub];
 
-    UIButton *support = [self button:@"\u2708\uFE0E  \u0627\u0644\u062F\u0639\u0645" frame:CGRectMake(W-165,14,92,42)
+    UIButton *support = [self button:@"\u2708\uFE0E  \u0627\u0644\u062F\u0639\u0645" frame:CGRectMake(W-166,12,92,40)
                                 tint:[UIColor colorWithRed:0.0 green:0.68 blue:0.92 alpha:1]];
     [support addTarget:self action:@selector(showSupport) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:support];
 
     UIButton *info = [UIButton buttonWithType:UIButtonTypeSystem];
-    info.frame = CGRectMake(W-68,15,38,38);
+    info.frame = CGRectMake(W-70,13,38,38);
     info.backgroundColor = [UIColor colorWithRed:0.16 green:0.76 blue:0.29 alpha:1];
     info.layer.cornerRadius = 19;
     [info setTitle:@"\u24D8" forState:UIControlStateNormal];
@@ -248,7 +252,7 @@
     [content addSubview:info];
 
     UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
-    close.frame = CGRectMake(W-34,17,28,34);
+    close.frame = CGRectMake(W-34,14,28,34);
     [close setTitle:@"\u00D7" forState:UIControlStateNormal];
     [close setTitleColor:[UIColor colorWithWhite:1 alpha:.65] forState:UIControlStateNormal];
     close.titleLabel.font = [UIFont systemFontOfSize:30];
@@ -256,7 +260,7 @@
     [content addSubview:close];
 
     // Search
-    _searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(margin,72,inner,48)];
+    _searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(margin,68,inner,48)];
     _searchBar.delegate = self;
     _searchBar.placeholder = @"\u0628\u062D\u062B \u0639\u0646 \u0645\u0648\u0642\u0639";
     _searchBar.searchBarStyle = UISearchBarStyleMinimal;
@@ -272,16 +276,16 @@
     UIColor *purple = [UIColor colorWithRed:.58 green:.31 blue:.92 alpha:1];
 
     CGFloat gap=8, third=(inner-gap*2)/3.0;
-    UIButton *saved=[self button:@"\U0001F516 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0627\u062A" frame:CGRectMake(margin,130,third,48) tint:orange];
-    UIButton *save=[self button:@"\u271A  \u062D\u0641\u0638" frame:CGRectMake(margin+third+gap,130,third,48) tint:green];
-    UIButton *restore=[self button:@"\u21B6  \u0627\u0633\u062A\u0639\u0627\u062F\u0629" frame:CGRectMake(margin+(third+gap)*2,130,third,48) tint:red];
+    UIButton *saved=[self button:@"\U0001F516 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0627\u062A" frame:CGRectMake(margin,124,third,48) tint:orange];
+    UIButton *save=[self button:@"\u271A  \u062D\u0641\u0638" frame:CGRectMake(margin+third+gap,124,third,48) tint:green];
+    UIButton *restore=[self button:@"\u21B6  \u0627\u0633\u062A\u0639\u0627\u062F\u0629" frame:CGRectMake(margin+(third+gap)*2,124,third,48) tint:red];
     [saved addTarget:self action:@selector(showSaved) forControlEvents:UIControlEventTouchUpInside];
     [save addTarget:self action:@selector(saveCurrent) forControlEvents:UIControlEventTouchUpInside];
     [restore addTarget:self action:@selector(restoreLocation) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:saved]; [content addSubview:save]; [content addSubview:restore];
 
     // Map
-    _mapView = [[MKMapView alloc] initWithFrame:CGRectMake(margin,188,inner,210)];
+    _mapView = [[MKMapView alloc] initWithFrame:CGRectMake(margin,184,inner,224)];
     _mapView.delegate = self;
     _mapView.layer.cornerRadius = 18;
     _mapView.layer.masksToBounds = YES;
@@ -293,7 +297,7 @@
     lp.minimumPressDuration = .3;
     [_mapView addGestureRecognizer:lp];
 
-    UIButton *expand=[self button:@"\u2922" frame:CGRectMake(W-70,202,42,42)
+    UIButton *expand=[self button:@"\u2922" frame:CGRectMake(W-68,198,40,40)
                              tint:[UIColor colorWithWhite:.7 alpha:1]];
     [expand addTarget:self action:@selector(centerSelected) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:expand];
@@ -304,19 +308,19 @@
     // Map mode row
     UISegmentedControl *mapModes =
         [[UISegmentedControl alloc] initWithItems:@[@"\u0639\u0627\u062F\u064A",@"\u0642\u0645\u0631 \u0635\u0646\u0627\u0639\u064A"]];
-    mapModes.frame = CGRectMake(margin,408,inner*0.50-4,42);
+    mapModes.frame = CGRectMake(margin,418,inner*0.50-4,42);
     mapModes.selectedSegmentIndex = 0;
     [mapModes addTarget:self action:@selector(mapModeChanged:) forControlEvents:UIControlEventValueChanged];
     [content addSubview:mapModes];
 
     UIButton *myLocation=[self button:@"\u27A4  \u0645\u0648\u0642\u0639\u064A"
-                                frame:CGRectMake(margin+inner*0.50+4,408,inner*0.50-4,42)
+                                frame:CGRectMake(margin+inner*0.50+4,418,inner*0.50-4,42)
                                  tint:cyan];
     [myLocation addTarget:self action:@selector(goMyLocation) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:myLocation];
 
     // Location switch
-    UIView *locCard=[self card:CGRectMake(margin,460,inner,58)];
+    UIView *locCard=[self card:CGRectMake(margin,472,inner,60)];
     [content addSubview:locCard];
     UILabel *locTitle=[self label:@"\u27A4  \u062A\u0641\u0639\u064A\u0644 \u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u0645\u0648\u0642\u0639"
                             frame:CGRectMake(18,8,inner-95,42) size:17 bold:NO];
@@ -326,23 +330,23 @@
               forControlEvents:UIControlEventValueChanged];
     [locCard addSubview:_locationSwitch];
 
-    _coordLabel=[self label:@"" frame:CGRectMake(margin,521,inner,22) size:11 bold:NO];
+    _coordLabel=[self label:@"" frame:CGRectMake(margin,537,inner,20) size:11 bold:NO];
     _coordLabel.textAlignment=NSTextAlignmentCenter;
     _coordLabel.textColor=[UIColor colorWithWhite:1 alpha:.55];
     [content addSubview:_coordLabel];
     [self refreshCoordinate];
 
     // Route/random/schedule
-    UIButton *route=[self button:@"\u2301  \u0645\u0633\u0627\u0631" frame:CGRectMake(margin,550,third,50) tint:teal];
-    UIButton *random=[self button:@"\u2928  \u0639\u0634\u0648\u0627\u0626\u064A" frame:CGRectMake(margin+third+gap,550,third,50) tint:purple];
-    UIButton *schedule=[self button:@"\u25F7  \u0627\u0644\u062C\u062F\u0648\u0644\u0629" frame:CGRectMake(margin+(third+gap)*2,550,third,50) tint:cyan];
+    UIButton *route=[self button:@"\u2301  \u0645\u0633\u0627\u0631" frame:CGRectMake(margin,563,third,50) tint:teal];
+    UIButton *random=[self button:@"\u2928  \u0639\u0634\u0648\u0627\u0626\u064A" frame:CGRectMake(margin+third+gap,563,third,50) tint:purple];
+    UIButton *schedule=[self button:@"\u25F7  \u0627\u0644\u062C\u062F\u0648\u0644\u0629" frame:CGRectMake(margin+(third+gap)*2,563,third,50) tint:cyan];
     [route addTarget:self action:@selector(routeTapped) forControlEvents:UIControlEventTouchUpInside];
     [random addTarget:self action:@selector(randomTapped) forControlEvents:UIControlEventTouchUpInside];
     [schedule addTarget:self action:@selector(scheduleTapped) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:route]; [content addSubview:random]; [content addSubview:schedule];
 
     // Alternate photo card
-    UIView *photoCard=[self card:CGRectMake(margin,612,inner,112)];
+    UIView *photoCard=[self card:CGRectMake(margin,625,inner,112)];
     [content addSubview:photoCard];
     UILabel *photoTitle=[self label:@"\U0001F4F7  \u0635\u0648\u0631\u0629 \u0628\u062F\u064A\u0644\u0629" frame:CGRectMake(16,8,180,38) size:17 bold:NO];
     [photoCard addSubview:photoTitle];
@@ -360,15 +364,15 @@
 
     // Bluetooth / WiFi
     CGFloat half=(inner-gap)/2.0;
-    UIButton *bt=[self button:@"\u25C9))) \u0627\u0644\u0628\u0644\u0648\u062A\u0648\u062B" frame:CGRectMake(margin,738,half,50)
+    UIButton *bt=[self button:@"\u25C9))) \u0627\u0644\u0628\u0644\u0648\u062A\u0648\u062B" frame:CGRectMake(margin,750,half,50)
                         tint:[UIColor colorWithRed:.1 green:.58 blue:.9 alpha:1]];
-    UIButton *wifi=[self button:@"\u2301  \u0627\u0644\u0648\u0627\u064A \u0641\u0627\u064A" frame:CGRectMake(margin+half+gap,738,half,50) tint:cyan];
+    UIButton *wifi=[self button:@"\u2301  \u0627\u0644\u0648\u0627\u064A \u0641\u0627\u064A" frame:CGRectMake(margin+half+gap,750,half,50) tint:cyan];
     [bt addTarget:self action:@selector(bluetoothTapped) forControlEvents:UIControlEventTouchUpInside];
     [wifi addTarget:self action:@selector(wifiTapped) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:bt]; [content addSubview:wifi];
 
     // Device card
-    UIView *device=[self card:CGRectMake(margin,800,inner,64)];
+    UIView *device=[self card:CGRectMake(margin,812,inner,66)];
     [content addSubview:device];
     UILabel *deviceTitle=[self label:@"\U0001F4F1  \u0645\u0639\u0631\u0641 \u0627\u0644\u062C\u0647\u0627\u0632" frame:CGRectMake(15,10,145,42) size:16 bold:NO];
     [device addSubview:deviceTitle];
@@ -386,23 +390,23 @@
     }
 
     // Support / shop
-    UIButton *shop=[self button:@"\U0001F6D2  \u0634\u0631\u0627\u0621 \u0643\u0648\u062F" frame:CGRectMake(margin,878,half,52) tint:orange];
-    UIButton *chat=[self button:@"\u25CF  \u0627\u0644\u062F\u0639\u0645 \u0627\u0644\u0641\u0646\u064A" frame:CGRectMake(margin+half+gap,878,half,52) tint:cyan];
+    UIButton *shop=[self button:@"\U0001F6D2  \u0634\u0631\u0627\u0621 \u0643\u0648\u062F" frame:CGRectMake(margin,892,half,52) tint:orange];
+    UIButton *chat=[self button:@"\u25CF  \u0627\u0644\u062F\u0639\u0645 \u0627\u0644\u0641\u0646\u064A" frame:CGRectMake(margin+half+gap,892,half,52) tint:cyan];
     [shop addTarget:self action:@selector(showSupport) forControlEvents:UIControlEventTouchUpInside];
     [chat addTarget:self action:@selector(showSupport) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:shop]; [content addSubview:chat];
 
     // Bottom controls
-    UIButton *stop=[self button:@"\u23F9  \u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u0643\u0644" frame:CGRectMake(margin,944,third,50) tint:red];
-    UIButton *hide=[self button:@"\u25C9\u0338  \u0625\u062E\u0641\u0627\u0621 \u0627\u0644\u0623\u062F\u0627\u0629" frame:CGRectMake(margin+third+gap,944,third,50)
+    UIButton *stop=[self button:@"\u23F9  \u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u0643\u0644" frame:CGRectMake(margin,958,third,50) tint:red];
+    UIButton *hide=[self button:@"\u25C9\u0338  \u0625\u062E\u0641\u0627\u0621 \u0627\u0644\u0623\u062F\u0627\u0629" frame:CGRectMake(margin+third+gap,958,third,50)
                            tint:[UIColor colorWithWhite:.65 alpha:1]];
-    UIButton *custom=[self button:@"\u2637  \u062A\u062E\u0635\u064A\u0635" frame:CGRectMake(margin+(third+gap)*2,944,third,50) tint:cyan];
+    UIButton *custom=[self button:@"\u2637  \u062A\u062E\u0635\u064A\u0635" frame:CGRectMake(margin+(third+gap)*2,958,third,50) tint:cyan];
     [stop addTarget:self action:@selector(stopAll) forControlEvents:UIControlEventTouchUpInside];
     [hide addTarget:self action:@selector(closePanel) forControlEvents:UIControlEventTouchUpInside];
     [custom addTarget:self action:@selector(notImplemented) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:stop]; [content addSubview:hide]; [content addSubview:custom];
 
-    _statusLabel=[self label:@"DEFAULT" frame:CGRectMake(margin,1004,inner,20) size:11 bold:NO];
+    _statusLabel=[self label:@"DEFAULT" frame:CGRectMake(margin,1020,inner,20) size:11 bold:NO];
     _statusLabel.textAlignment=NSTextAlignmentCenter;
     _statusLabel.textColor=[UIColor colorWithWhite:1 alpha:.45];
     [content addSubview:_statusLabel];
