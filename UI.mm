@@ -2,6 +2,8 @@
 #import "UI.h"
 
 #import <UIKit/UIKit.h>
+#import <MapKit/MapKit.h>
+#import <CoreLocation/CoreLocation.h>
 
 #pragma mark - Overlay Root
 
@@ -13,7 +15,8 @@
 - (void)loadView {
 
     UIView *view =
-        [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
+        [[UIView alloc]
+            initWithFrame:UIScreen.mainScreen.bounds];
 
     view.backgroundColor =
         UIColor.clearColor;
@@ -24,25 +27,62 @@
 @end
 
 
-#pragma mark - UI Controller
+#pragma mark - WolFox UI
+
+@interface WFUIController ()
+<
+    MKMapViewDelegate,
+    UISearchBarDelegate,
+    UITableViewDelegate,
+    UITableViewDataSource
+>
+@end
+
 
 @implementation WFUIController {
+
     UIWindow *_overlayWindow;
+
     UIButton *_floatingButton;
 
-    UIView *_panel;
-    UILabel *_statusLabel;
+    UIView *_mainView;
+    UIView *_sideMenu;
+    UIView *_bottomCard;
 
-    UITextField *_latitudeField;
-    UITextField *_longitudeField;
+    MKMapView *_mapView;
+
+    UISearchBar *_searchBar;
+
+    UILabel *_coordinateLabel;
+    UILabel *_statusLabel;
+    UILabel *_modeLabel;
+
+    UIButton *_menuButton;
+    UIButton *_closeButton;
+    UIButton *_centerButton;
+    UIButton *_mapTypeButton;
+    UIButton *_activateButton;
+    UIButton *_restoreButton;
+
+    UITableView *_menuTable;
+
+    CLLocationCoordinate2D _selectedCoordinate;
+
+    BOOL _hasSelectedCoordinate;
+    BOOL _menuVisible;
 }
+
+
+#pragma mark - Singleton
 
 + (instancetype)sharedController {
 
     static WFUIController *instance = nil;
+
     static dispatch_once_t onceToken;
 
     dispatch_once(&onceToken, ^{
+
         instance =
             [[WFUIController alloc] init];
     });
@@ -50,11 +90,12 @@
     return instance;
 }
 
+
 #pragma mark - Auto Start
 
 + (void)load {
 
-    NSLog(@"[WolFox] WFUIController +load");
+    NSLog(@"[WolFox] UI +load");
 
     dispatch_after(
         dispatch_time(
@@ -69,11 +110,10 @@
     });
 }
 
+
 #pragma mark - Install
 
 - (void)installWhenReady {
-
-    NSLog(@"[WolFox] installWhenReady");
 
     dispatch_async(
         dispatch_get_main_queue(),
@@ -83,7 +123,8 @@
     });
 }
 
-#pragma mark - Active Scene
+
+#pragma mark - Scene
 
 - (UIWindowScene *)activeWindowScene
     API_AVAILABLE(ios(13.0)) {
@@ -95,8 +136,7 @@
          application.connectedScenes) {
 
         if (![scene
-                isKindOfClass:
-                    UIWindowScene.class]) {
+                isKindOfClass:UIWindowScene.class]) {
 
             continue;
         }
@@ -117,8 +157,7 @@
          application.connectedScenes) {
 
         if ([scene
-                isKindOfClass:
-                    UIWindowScene.class]) {
+                isKindOfClass:UIWindowScene.class]) {
 
             return
                 (UIWindowScene *)scene;
@@ -128,14 +167,14 @@
     return nil;
 }
 
+
 #pragma mark - Overlay
 
 - (void)installOverlay {
 
     if (_overlayWindow != nil) {
 
-        _overlayWindow.hidden =
-            NO;
+        _overlayWindow.hidden = NO;
 
         return;
     }
@@ -175,9 +214,9 @@
     window.windowLevel =
         UIWindowLevelAlert + 1000.0;
 
+
     WFOverlayRootController *root =
-        [[WFOverlayRootController alloc]
-            init];
+        [[WFOverlayRootController alloc] init];
 
     window.rootViewController =
         root;
@@ -188,11 +227,14 @@
     _overlayWindow =
         window;
 
-    [self buildFloatingButtonOnView:
+
+    [self buildFloatingButton:
         root.view];
 
-    NSLog(@"[WolFox] Overlay installed");
+
+    NSLog(@"[WolFox] overlay ready");
 }
+
 
 - (void)retryInstall {
 
@@ -211,36 +253,37 @@
     });
 }
 
+
 #pragma mark - Floating Button
 
-- (void)buildFloatingButtonOnView:
-    (UIView *)view {
+- (void)buildFloatingButton:
+    (UIView *)parent {
 
     if (_floatingButton != nil) {
         return;
     }
 
     UIButton *button =
-        [UIButton buttonWithType:
-            UIButtonTypeCustom];
+        [UIButton
+            buttonWithType:UIButtonTypeCustom];
 
     button.frame =
         CGRectMake(
-            20.0,
-            170.0,
-            68.0,
-            68.0
+            18.0,
+            160.0,
+            62.0,
+            62.0
         );
 
     button.backgroundColor =
         [UIColor
             colorWithRed:0.08
-                   green:0.08
-                    blue:0.10
-                   alpha:0.96];
+                   green:0.09
+                    blue:0.11
+                   alpha:0.98];
 
     button.layer.cornerRadius =
-        34.0;
+        31.0;
 
     button.layer.borderWidth =
         2.0;
@@ -248,7 +291,7 @@
     button.layer.borderColor =
         [UIColor
             colorWithWhite:1.0
-                     alpha:0.22].CGColor;
+                     alpha:0.20].CGColor;
 
     button.layer.shadowOpacity =
         0.35;
@@ -257,23 +300,22 @@
         8.0;
 
     button.layer.shadowOffset =
-        CGSizeMake(
-            0.0,
-            4.0
-        );
+        CGSizeMake(0, 4);
+
 
     [button
         setTitle:@"🦊"
         forState:UIControlStateNormal];
 
     button.titleLabel.font =
-        [UIFont
-            systemFontOfSize:32.0];
+        [UIFont systemFontOfSize:29.0];
+
 
     [button
         addTarget:self
-           action:@selector(floatingButtonPressed)
+           action:@selector(openMainInterface)
  forControlEvents:UIControlEventTouchUpInside];
+
 
     UIPanGestureRecognizer *pan =
         [[UIPanGestureRecognizer alloc]
@@ -283,26 +325,26 @@
     [button
         addGestureRecognizer:pan];
 
-    [view addSubview:button];
 
-    [view bringSubviewToFront:button];
+    [parent addSubview:button];
 
     _floatingButton =
         button;
 }
 
-#pragma mark - Drag Button
+
+#pragma mark - Drag Floating Button
 
 - (void)handleFloatingPan:
     (UIPanGestureRecognizer *)gesture {
 
-    UIView *button =
+    UIView *view =
         gesture.view;
 
     UIView *parent =
-        button.superview;
+        view.superview;
 
-    if (button == nil ||
+    if (view == nil ||
         parent == nil) {
 
         return;
@@ -313,600 +355,807 @@
             translationInView:parent];
 
     CGPoint center =
-        button.center;
+        view.center;
 
-    center.x +=
-        translation.x;
+    center.x += translation.x;
+    center.y += translation.y;
 
-    center.y +=
-        translation.y;
+    CGFloat halfW =
+        CGRectGetWidth(view.bounds) / 2.0;
 
-    CGFloat halfWidth =
-        CGRectGetWidth(
-            button.bounds
-        ) / 2.0;
-
-    CGFloat halfHeight =
-        CGRectGetHeight(
-            button.bounds
-        ) / 2.0;
-
-    CGFloat width =
-        CGRectGetWidth(
-            parent.bounds
-        );
-
-    CGFloat height =
-        CGRectGetHeight(
-            parent.bounds
-        );
+    CGFloat halfH =
+        CGRectGetHeight(view.bounds) / 2.0;
 
     center.x =
         MAX(
-            halfWidth,
+            halfW,
             MIN(
-                width - halfWidth,
+                CGRectGetWidth(parent.bounds)
+                    - halfW,
                 center.x
             )
         );
 
     center.y =
         MAX(
-            halfHeight,
+            halfH,
             MIN(
-                height - halfHeight,
+                CGRectGetHeight(parent.bounds)
+                    - halfH,
                 center.y
             )
         );
 
-    button.center =
+    view.center =
         center;
 
     [gesture
-        setTranslation:
-            CGPointZero
-              inView:
-            parent];
+        setTranslation:CGPointZero
+                inView:parent];
 }
 
-#pragma mark - Open Panel
 
-- (void)floatingButtonPressed {
+#pragma mark - Open
 
-    if (_panel != nil) {
+- (void)openMainInterface {
 
-        [self closePanel];
+    if (_mainView != nil) {
+
+        [self closeMainInterface];
 
         return;
     }
 
-    [self buildPanel];
+    [self buildMainInterface];
 }
 
-#pragma mark - Panel
 
-- (void)buildPanel {
+#pragma mark - Main Interface
 
-    UIView *rootView =
+- (void)buildMainInterface {
+
+    UIView *root =
         _overlayWindow
             .rootViewController
             .view;
 
-    if (rootView == nil) {
+    if (root == nil) {
         return;
     }
 
-    CGFloat screenWidth =
-        CGRectGetWidth(
-            rootView.bounds
-        );
 
-    CGFloat panelWidth =
-        MIN(
-            360.0,
-            screenWidth - 28.0
-        );
-
-    CGFloat panelHeight =
-        430.0;
-
-    CGFloat x =
-        (screenWidth -
-         panelWidth) /
-        2.0;
-
-    CGFloat y =
-        120.0;
-
-    UIView *panel =
+    UIView *main =
         [[UIView alloc]
-            initWithFrame:
-                CGRectMake(
-                    x,
-                    y,
-                    panelWidth,
-                    panelHeight
-                )];
+            initWithFrame:root.bounds];
 
-    panel.backgroundColor =
+    main.backgroundColor =
         [UIColor
-            colorWithRed:0.07
-                   green:0.07
-                    blue:0.09
-                   alpha:0.97];
+            colorWithRed:0.04
+                   green:0.05
+                    blue:0.06
+                   alpha:0.98];
 
-    panel.layer.cornerRadius =
-        24.0;
+    main.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth |
+        UIViewAutoresizingFlexibleHeight;
 
-    panel.layer.borderWidth =
-        1.0;
+    [root addSubview:main];
 
-    panel.layer.borderColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.12].CGColor;
+    _mainView =
+        main;
 
-    panel.layer.shadowOpacity =
-        0.35;
 
-    panel.layer.shadowRadius =
-        18.0;
+    [self buildMap];
 
-    panel.layer.shadowOffset =
-        CGSizeMake(
-            0.0,
-            8.0
+    [self buildTopBar];
+
+    [self buildMapControls];
+
+    [self buildBottomCard];
+
+    [self buildSideMenu];
+
+
+    _floatingButton.hidden =
+        YES;
+
+
+    CLLocationCoordinate2D initial =
+        CLLocationCoordinate2DMake(
+            24.7136,
+            46.6753
         );
 
-    [rootView addSubview:panel];
-
-    [rootView bringSubviewToFront:panel];
-
-    _panel =
-        panel;
-
-    [self buildPanelContents];
+    [self selectCoordinate:
+        initial
+         animated:NO];
 }
 
-#pragma mark - Panel Contents
 
-- (void)buildPanelContents {
+#pragma mark - Map
 
-    if (_panel == nil) {
-        return;
-    }
+- (void)buildMap {
+
+    CGRect frame =
+        _mainView.bounds;
+
+    MKMapView *map =
+        [[MKMapView alloc]
+            initWithFrame:frame];
+
+    map.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth |
+        UIViewAutoresizingFlexibleHeight;
+
+    map.delegate =
+        self;
+
+    map.mapType =
+        MKMapTypeStandard;
+
+    map.showsCompass =
+        YES;
+
+    map.showsScale =
+        NO;
+
+    map.showsUserLocation =
+        YES;
+
+
+    [_mainView addSubview:map];
+
+    _mapView =
+        map;
+
+
+    UILongPressGestureRecognizer *longPress =
+        [[UILongPressGestureRecognizer alloc]
+            initWithTarget:self
+                    action:@selector(mapLongPressed:)];
+
+    longPress.minimumPressDuration =
+        0.35;
+
+    [_mapView
+        addGestureRecognizer:longPress];
+}
+
+
+#pragma mark - Top Bar
+
+- (void)buildTopBar {
 
     CGFloat width =
         CGRectGetWidth(
-            _panel.bounds
+            _mainView.bounds
         );
 
-    UILabel *title =
-        [[UILabel alloc]
-            initWithFrame:
-                CGRectMake(
-                    24.0,
-                    22.0,
-                    width - 80.0,
-                    32.0
-                )];
 
-    title.text =
-        @"WolFox";
-
-    title.textColor =
-        UIColor.whiteColor;
-
-    title.font =
-        [UIFont
-            boldSystemFontOfSize:
-                24.0];
-
-    [_panel addSubview:title];
-
-
-    UIButton *closeButton =
-        [UIButton
-            buttonWithType:
-                UIButtonTypeSystem];
-
-    closeButton.frame =
-        CGRectMake(
-            width - 58.0,
-            16.0,
-            42.0,
-            42.0
-        );
-
-    [closeButton
-        setTitle:@"✕"
-        forState:UIControlStateNormal];
-
-    closeButton.titleLabel.font =
-        [UIFont
-            boldSystemFontOfSize:
-                20.0];
-
-    [closeButton
-        setTitleColor:
-            UIColor.whiteColor
-        forState:
-            UIControlStateNormal];
-
-    [closeButton
-        addTarget:self
-           action:@selector(closePanel)
- forControlEvents:UIControlEventTouchUpInside];
-
-    [_panel addSubview:closeButton];
-
-
-    UILabel *subtitle =
-        [[UILabel alloc]
-            initWithFrame:
-                CGRectMake(
-                    24.0,
-                    58.0,
-                    width - 48.0,
-                    24.0
-                )];
-
-    subtitle.text =
-        @"Standalone Runtime Controller";
-
-    subtitle.textColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.55];
-
-    subtitle.font =
-        [UIFont
-            systemFontOfSize:
-                13.0];
-
-    [_panel addSubview:subtitle];
-
-
-    UILabel *latLabel =
-        [self labelWithText:
-            @"Latitude"
-        frame:
-            CGRectMake(
-                24.0,
-                103.0,
-                width - 48.0,
-                20.0
-            )];
-
-    [_panel addSubview:latLabel];
-
-
-    _latitudeField =
-        [self textFieldWithFrame:
-            CGRectMake(
-                24.0,
-                129.0,
-                width - 48.0,
-                46.0
-            )];
-
-    _latitudeField.placeholder =
-        @"24.7136";
-
-    [_panel
-        addSubview:
-            _latitudeField];
-
-
-    UILabel *lonLabel =
-        [self labelWithText:
-            @"Longitude"
-        frame:
-            CGRectMake(
-                24.0,
-                189.0,
-                width - 48.0,
-                20.0
-            )];
-
-    [_panel addSubview:lonLabel];
-
-
-    _longitudeField =
-        [self textFieldWithFrame:
-            CGRectMake(
-                24.0,
-                215.0,
-                width - 48.0,
-                46.0
-            )];
-
-    _longitudeField.placeholder =
-        @"46.6753";
-
-    [_panel
-        addSubview:
-            _longitudeField];
-
-
-    UIButton *setButton =
-        [self actionButtonWithTitle:
-            @"Set Static Location"
-        frame:
-            CGRectMake(
-                24.0,
-                282.0,
-                width - 48.0,
-                48.0
-            )];
-
-    [setButton
-        addTarget:self
-           action:@selector(setStaticLocationPressed)
- forControlEvents:UIControlEventTouchUpInside];
-
-    [_panel addSubview:setButton];
-
-
-    UIButton *restoreButton =
-        [UIButton
-            buttonWithType:
-                UIButtonTypeSystem];
-
-    restoreButton.frame =
-        CGRectMake(
-            24.0,
-            342.0,
-            width - 48.0,
-            44.0
-        );
-
-    restoreButton.layer.cornerRadius =
-        12.0;
-
-    restoreButton.backgroundColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.07];
-
-    [restoreButton
-        setTitle:@"Restore Default"
-        forState:UIControlStateNormal];
-
-    [restoreButton
-        setTitleColor:
-            UIColor.whiteColor
-        forState:
-            UIControlStateNormal];
-
-    restoreButton.titleLabel.font =
-        [UIFont
-            systemFontOfSize:
-                15.0
-                      weight:
-                UIFontWeightSemibold];
-
-    [restoreButton
-        addTarget:self
-           action:@selector(restoreDefaultPressed)
- forControlEvents:UIControlEventTouchUpInside];
-
-    [_panel
-        addSubview:
-            restoreButton];
-
-
-    _statusLabel =
-        [[UILabel alloc]
-            initWithFrame:
-                CGRectMake(
-                    24.0,
-                    396.0,
-                    width - 48.0,
-                    24.0
-                )];
-
-    _statusLabel.textColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.65];
-
-    _statusLabel.font =
-        [UIFont
-            systemFontOfSize:
-                12.0];
-
-    _statusLabel.numberOfLines =
-        1;
-
-    [_panel
-        addSubview:
-            _statusLabel];
-
-    [self refreshStatus];
-}
-
-#pragma mark - Components
-
-- (UILabel *)labelWithText:
-    (NSString *)text
-                    frame:
-    (CGRect)frame {
-
-    UILabel *label =
-        [[UILabel alloc]
-            initWithFrame:frame];
-
-    label.text =
-        text;
-
-    label.textColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.82];
-
-    label.font =
-        [UIFont
-            systemFontOfSize:
-                13.0
-                      weight:
-                UIFontWeightMedium];
-
-    return label;
-}
-
-- (UITextField *)textFieldWithFrame:
-    (CGRect)frame {
-
-    UITextField *field =
-        [[UITextField alloc]
-            initWithFrame:frame];
-
-    field.backgroundColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.08];
-
-    field.textColor =
-        UIColor.whiteColor;
-
-    field.keyboardType =
-        UIKeyboardTypeNumbersAndPunctuation;
-
-    field.layer.cornerRadius =
-        12.0;
-
-    field.layer.borderWidth =
-        1.0;
-
-    field.layer.borderColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.10].CGColor;
-
-    field.font =
-        [UIFont
-            systemFontOfSize:
-                15.0];
-
-    UIView *padding =
+    UIView *top =
         [[UIView alloc]
             initWithFrame:
                 CGRectMake(
-                    0.0,
-                    0.0,
-                    12.0,
-                    1.0
+                    12,
+                    52,
+                    width - 24,
+                    58
                 )];
 
-    field.leftView =
-        padding;
+    top.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth;
 
-    field.leftViewMode =
-        UITextFieldViewModeAlways;
+    top.backgroundColor =
+        [UIColor
+            colorWithRed:0.06
+                   green:0.07
+                    blue:0.09
+                   alpha:0.94];
 
-    return field;
+    top.layer.cornerRadius =
+        18.0;
+
+    top.layer.shadowOpacity =
+        0.20;
+
+    top.layer.shadowRadius =
+        8.0;
+
+    [_mainView addSubview:top];
+
+
+    UIButton *menu =
+        [UIButton
+            buttonWithType:UIButtonTypeSystem];
+
+    menu.frame =
+        CGRectMake(
+            8,
+            7,
+            44,
+            44
+        );
+
+    [menu
+        setTitle:@"☰"
+        forState:UIControlStateNormal];
+
+    menu.titleLabel.font =
+        [UIFont
+            boldSystemFontOfSize:23];
+
+    [menu
+        setTitleColor:UIColor.whiteColor
+        forState:UIControlStateNormal];
+
+    [menu
+        addTarget:self
+           action:@selector(toggleSideMenu)
+ forControlEvents:UIControlEventTouchUpInside];
+
+    [top addSubview:menu];
+
+    _menuButton =
+        menu;
+
+
+    UIButton *close =
+        [UIButton
+            buttonWithType:UIButtonTypeSystem];
+
+    close.frame =
+        CGRectMake(
+            CGRectGetWidth(top.bounds) - 50,
+            7,
+            44,
+            44
+        );
+
+    close.autoresizingMask =
+        UIViewAutoresizingFlexibleLeftMargin;
+
+    [close
+        setTitle:@"✕"
+        forState:UIControlStateNormal];
+
+    close.titleLabel.font =
+        [UIFont
+            boldSystemFontOfSize:21];
+
+    [close
+        setTitleColor:UIColor.whiteColor
+        forState:UIControlStateNormal];
+
+    [close
+        addTarget:self
+           action:@selector(closeMainInterface)
+ forControlEvents:UIControlEventTouchUpInside];
+
+    [top addSubview:close];
+
+    _closeButton =
+        close;
+
+
+    UISearchBar *search =
+        [[UISearchBar alloc]
+            initWithFrame:
+                CGRectMake(
+                    54,
+                    7,
+                    CGRectGetWidth(top.bounds)
+                        - 110,
+                    44
+                )];
+
+    search.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth;
+
+    search.placeholder =
+        @"Search location";
+
+    search.delegate =
+        self;
+
+    search.searchBarStyle =
+        UISearchBarStyleMinimal;
+
+    search.tintColor =
+        UIColor.whiteColor;
+
+    search.barStyle =
+        UIBarStyleBlack;
+
+
+    [top addSubview:search];
+
+    _searchBar =
+        search;
 }
 
-- (UIButton *)actionButtonWithTitle:
+
+#pragma mark - Map Controls
+
+- (UIButton *)smallMapButton:
     (NSString *)title
-                           frame:
-    (CGRect)frame {
+                     y:
+    (CGFloat)y {
+
+    CGFloat width =
+        CGRectGetWidth(
+            _mainView.bounds
+        );
 
     UIButton *button =
         [UIButton
-            buttonWithType:
-                UIButtonTypeSystem];
+            buttonWithType:UIButtonTypeSystem];
 
     button.frame =
-        frame;
+        CGRectMake(
+            width - 62,
+            y,
+            48,
+            48
+        );
+
+    button.autoresizingMask =
+        UIViewAutoresizingFlexibleLeftMargin;
 
     button.backgroundColor =
         [UIColor
-            colorWithRed:0.25
-                   green:0.55
-                    blue:1.0
-                   alpha:1.0];
+            colorWithRed:0.06
+                   green:0.07
+                    blue:0.09
+                   alpha:0.94];
 
     button.layer.cornerRadius =
-        14.0;
+        16.0;
 
     [button
         setTitle:title
         forState:UIControlStateNormal];
 
-    [button
-        setTitleColor:
-            UIColor.whiteColor
-        forState:
-            UIControlStateNormal];
-
     button.titleLabel.font =
         [UIFont
-            systemFontOfSize:
-                16.0
-                      weight:
-                UIFontWeightSemibold];
+            systemFontOfSize:20];
+
+    [button
+        setTitleColor:UIColor.whiteColor
+        forState:UIControlStateNormal];
+
+    [_mainView addSubview:button];
 
     return button;
 }
 
-#pragma mark - Actions
 
-- (void)setStaticLocationPressed {
+- (void)buildMapControls {
 
-    double latitude =
-        [_latitudeField.text
-            doubleValue];
+    UIButton *center =
+        [self
+            smallMapButton:@"◎"
+                         y:132];
 
-    double longitude =
-        [_longitudeField.text
-            doubleValue];
+    [center
+        addTarget:self
+           action:@selector(centerSelectedLocation)
+ forControlEvents:UIControlEventTouchUpInside];
 
-    WFError *error =
-        [[WFAppManager sharedManager]
-            activateStaticLocationWithLatitude:
-                latitude
-            longitude:
-                longitude];
+    _centerButton =
+        center;
 
-    if ([error isSuccess]) {
 
-        [self showMessage:
-            @"Static location activated ✅"];
+    UIButton *type =
+        [self
+            smallMapButton:@"◫"
+                         y:190];
 
-    } else {
+    [type
+        addTarget:self
+           action:@selector(changeMapType)
+ forControlEvents:UIControlEventTouchUpInside];
 
-        [self showMessage:
-            error.humanReadableMessage.length > 0
-                ? error.humanReadableMessage
-                : @"Unable to activate location"];
+    _mapTypeButton =
+        type;
+}
+
+
+#pragma mark - Long Press
+
+- (void)mapLongPressed:
+    (UILongPressGestureRecognizer *)gesture {
+
+    if (gesture.state !=
+        UIGestureRecognizerStateBegan) {
+
+        return;
     }
+
+    CGPoint point =
+        [gesture
+            locationInView:_mapView];
+
+    CLLocationCoordinate2D coordinate =
+        [_mapView
+            convertPoint:point
+            toCoordinateFromView:_mapView];
+
+    [self
+        selectCoordinate:coordinate
+                animated:YES];
+}
+
+
+#pragma mark - Coordinate
+
+- (void)selectCoordinate:
+    (CLLocationCoordinate2D)coordinate
+              animated:
+    (BOOL)animated {
+
+    _selectedCoordinate =
+        coordinate;
+
+    _hasSelectedCoordinate =
+        YES;
+
+
+    [_mapView
+        removeAnnotations:
+            _mapView.annotations];
+
+
+    MKPointAnnotation *pin =
+        [[MKPointAnnotation alloc] init];
+
+    pin.coordinate =
+        coordinate;
+
+    pin.title =
+        @"Selected Location";
+
+    [_mapView
+        addAnnotation:pin];
+
+
+    MKCoordinateRegion region =
+        MKCoordinateRegionMakeWithDistance(
+            coordinate,
+            1600,
+            1600
+        );
+
+    [_mapView
+        setRegion:region
+         animated:animated];
+
+
+    [self refreshCoordinateLabel];
+}
+
+
+- (void)refreshCoordinateLabel {
+
+    if (_coordinateLabel == nil) {
+        return;
+    }
+
+    if (!_hasSelectedCoordinate) {
+
+        _coordinateLabel.text =
+            @"No location selected";
+
+        return;
+    }
+
+    _coordinateLabel.text =
+        [NSString
+            stringWithFormat:
+                @"%.6f   %.6f",
+                _selectedCoordinate.latitude,
+                _selectedCoordinate.longitude];
+}
+
+
+#pragma mark - Bottom Card
+
+- (void)buildBottomCard {
+
+    CGFloat width =
+        CGRectGetWidth(
+            _mainView.bounds
+        );
+
+    CGFloat height =
+        CGRectGetHeight(
+            _mainView.bounds
+        );
+
+
+    UIView *card =
+        [[UIView alloc]
+            initWithFrame:
+                CGRectMake(
+                    14,
+                    height - 218,
+                    width - 28,
+                    196
+                )];
+
+    card.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth |
+        UIViewAutoresizingFlexibleTopMargin;
+
+    card.backgroundColor =
+        [UIColor
+            colorWithRed:0.055
+                   green:0.06
+                    blue:0.075
+                   alpha:0.97];
+
+    card.layer.cornerRadius =
+        24.0;
+
+    card.layer.shadowOpacity =
+        0.25;
+
+    card.layer.shadowRadius =
+        12.0;
+
+
+    [_mainView addSubview:card];
+
+    _bottomCard =
+        card;
+
+
+    UILabel *mode =
+        [[UILabel alloc]
+            initWithFrame:
+                CGRectMake(
+                    20,
+                    15,
+                    140,
+                    24
+                )];
+
+    mode.text =
+        @"LOCATION";
+
+    mode.font =
+        [UIFont
+            boldSystemFontOfSize:12];
+
+    mode.textColor =
+        [UIColor
+            colorWithRed:0.35
+                   green:0.65
+                    blue:1.0
+                   alpha:1.0];
+
+    [card addSubview:mode];
+
+    _modeLabel =
+        mode;
+
+
+    UILabel *coordinates =
+        [[UILabel alloc]
+            initWithFrame:
+                CGRectMake(
+                    20,
+                    41,
+                    CGRectGetWidth(card.bounds)
+                        - 40,
+                    28
+                )];
+
+    coordinates.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth;
+
+    coordinates.font =
+        [UIFont
+            monospacedDigitSystemFontOfSize:15
+                                     weight:UIFontWeightMedium];
+
+    coordinates.textColor =
+        UIColor.whiteColor;
+
+    [card addSubview:coordinates];
+
+    _coordinateLabel =
+        coordinates;
+
+
+    UIButton *activate =
+        [UIButton
+            buttonWithType:UIButtonTypeSystem];
+
+    activate.frame =
+        CGRectMake(
+            20,
+            79,
+            CGRectGetWidth(card.bounds)
+                - 40,
+            48
+        );
+
+    activate.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth;
+
+    activate.backgroundColor =
+        [UIColor
+            colorWithRed:0.20
+                   green:0.52
+                    blue:1.0
+                   alpha:1.0];
+
+    activate.layer.cornerRadius =
+        14.0;
+
+    [activate
+        setTitle:@"Activate Selected Location"
+        forState:UIControlStateNormal];
+
+    [activate
+        setTitleColor:UIColor.whiteColor
+        forState:UIControlStateNormal];
+
+    activate.titleLabel.font =
+        [UIFont
+            systemFontOfSize:15
+                      weight:UIFontWeightSemibold];
+
+    [activate
+        addTarget:self
+           action:@selector(activateSelectedLocation)
+ forControlEvents:UIControlEventTouchUpInside];
+
+    [card addSubview:activate];
+
+    _activateButton =
+        activate;
+
+
+    UIButton *restore =
+        [UIButton
+            buttonWithType:UIButtonTypeSystem];
+
+    restore.frame =
+        CGRectMake(
+            20,
+            137,
+            132,
+            40
+        );
+
+    restore.backgroundColor =
+        [UIColor
+            colorWithWhite:1.0
+                     alpha:0.08];
+
+    restore.layer.cornerRadius =
+        12.0;
+
+    [restore
+        setTitle:@"Restore"
+        forState:UIControlStateNormal];
+
+    [restore
+        setTitleColor:UIColor.whiteColor
+        forState:UIControlStateNormal];
+
+    [restore
+        addTarget:self
+           action:@selector(restoreLocation)
+ forControlEvents:UIControlEventTouchUpInside];
+
+    [card addSubview:restore];
+
+    _restoreButton =
+        restore;
+
+
+    UILabel *status =
+        [[UILabel alloc]
+            initWithFrame:
+                CGRectMake(
+                    164,
+                    137,
+                    CGRectGetWidth(card.bounds)
+                        - 184,
+                    40
+                )];
+
+    status.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth;
+
+    status.textAlignment =
+        NSTextAlignmentRight;
+
+    status.font =
+        [UIFont systemFontOfSize:12];
+
+    status.textColor =
+        [UIColor
+            colorWithWhite:1.0
+                     alpha:0.55];
+
+    [card addSubview:status];
+
+    _statusLabel =
+        status;
+
 
     [self refreshStatus];
 }
 
-- (void)restoreDefaultPressed {
+
+#pragma mark - Activate Location
+
+- (void)activateSelectedLocation {
+
+    if (!_hasSelectedCoordinate) {
+
+        [self
+            showAlert:@"Select a location first."];
+
+        return;
+    }
+
+
+    WFError *error =
+        [[WFAppManager sharedManager]
+            activateStaticLocationWithLatitude:
+                _selectedCoordinate.latitude
+            longitude:
+                _selectedCoordinate.longitude];
+
+
+    if ([error isSuccess]) {
+
+        [self
+            showAlert:
+                @"Location saved in WolFox runtime ✅"];
+
+    } else {
+
+        [self
+            showAlert:
+                error.humanReadableMessage
+                    ?: @"Unable to activate"];
+    }
+
+
+    [self refreshStatus];
+}
+
+
+- (void)restoreLocation {
 
     WFError *error =
         [[WFAppManager sharedManager]
             restoreDefaultLocation];
 
+
     if ([error isSuccess]) {
 
-        [self showMessage:
-            @"Default location restored ✅"];
+        [self
+            showAlert:
+                @"Default location restored ✅"];
 
     } else {
 
-        [self showMessage:
-            error.humanReadableMessage.length > 0
-                ? error.humanReadableMessage
-                : @"Unable to restore location"];
+        [self
+            showAlert:
+                error.humanReadableMessage
+                    ?: @"Unable to restore"];
     }
+
 
     [self refreshStatus];
 }
+
 
 #pragma mark - Status
 
@@ -916,42 +1165,504 @@
         [[WFRuntimeState sharedState]
             snapshotForUI];
 
-    BOOL enabled =
+    BOOL active =
         [snapshot[@"locationEnabled"]
             boolValue];
 
-    double latitude =
-        [snapshot[@"currentLatitude"]
-            doubleValue];
+    if (active) {
 
-    double longitude =
-        [snapshot[@"currentLongitude"]
-            doubleValue];
+        double lat =
+            [snapshot[@"currentLatitude"]
+                doubleValue];
 
-    NSString *lastAction =
-        snapshot[@"lastAction"];
-
-    if (enabled) {
+        double lon =
+            [snapshot[@"currentLongitude"]
+                doubleValue];
 
         _statusLabel.text =
             [NSString
                 stringWithFormat:
-                    @"Active: %.6f, %.6f",
-                    latitude,
-                    longitude];
+                    @"ACTIVE %.4f, %.4f",
+                    lat,
+                    lon];
 
     } else {
 
         _statusLabel.text =
-            lastAction.length > 0
-                ? lastAction
-                : @"Default environment";
+            @"DEFAULT";
     }
 }
 
+
+#pragma mark - Search
+
+- (void)searchBarSearchButtonClicked:
+    (UISearchBar *)searchBar {
+
+    NSString *query =
+        searchBar.text;
+
+    if (query.length == 0) {
+        return;
+    }
+
+
+    [searchBar
+        resignFirstResponder];
+
+
+    MKLocalSearchRequest *request =
+        [[MKLocalSearchRequest alloc]
+            init];
+
+    request.naturalLanguageQuery =
+        query;
+
+
+    MKLocalSearch *search =
+        [[MKLocalSearch alloc]
+            initWithRequest:request];
+
+
+    __weak WFUIController *weakSelf =
+        self;
+
+
+    [search
+        startWithCompletionHandler:
+            ^(
+                MKLocalSearchResponse *response,
+                NSError *error
+            ) {
+
+        WFUIController *strongSelf =
+            weakSelf;
+
+        if (strongSelf == nil) {
+            return;
+        }
+
+
+        if (error != nil ||
+            response.mapItems.count == 0) {
+
+            [strongSelf
+                showAlert:
+                    @"Location not found"];
+
+            return;
+        }
+
+
+        MKMapItem *item =
+            response.mapItems.firstObject;
+
+        CLLocationCoordinate2D coordinate =
+            item.placemark.coordinate;
+
+
+        dispatch_async(
+            dispatch_get_main_queue(),
+            ^{
+
+            [strongSelf
+                selectCoordinate:coordinate
+                        animated:YES];
+        });
+    }];
+}
+
+
+#pragma mark - Map Controls
+
+- (void)centerSelectedLocation {
+
+    if (!_hasSelectedCoordinate) {
+        return;
+    }
+
+    MKCoordinateRegion region =
+        MKCoordinateRegionMakeWithDistance(
+            _selectedCoordinate,
+            1200,
+            1200
+        );
+
+    [_mapView
+        setRegion:region
+         animated:YES];
+}
+
+
+- (void)changeMapType {
+
+    switch (_mapView.mapType) {
+
+        case MKMapTypeStandard:
+
+            _mapView.mapType =
+                MKMapTypeSatellite;
+
+            break;
+
+
+        case MKMapTypeSatellite:
+
+            _mapView.mapType =
+                MKMapTypeHybrid;
+
+            break;
+
+
+        default:
+
+            _mapView.mapType =
+                MKMapTypeStandard;
+
+            break;
+    }
+}
+
+
+#pragma mark - Side Menu
+
+- (void)buildSideMenu {
+
+    CGFloat height =
+        CGRectGetHeight(
+            _mainView.bounds
+        );
+
+    UIView *menu =
+        [[UIView alloc]
+            initWithFrame:
+                CGRectMake(
+                    -260,
+                    0,
+                    250,
+                    height
+                )];
+
+    menu.autoresizingMask =
+        UIViewAutoresizingFlexibleHeight;
+
+    menu.backgroundColor =
+        [UIColor
+            colorWithRed:0.045
+                   green:0.05
+                    blue:0.065
+                   alpha:0.99];
+
+    menu.layer.shadowOpacity =
+        0.35;
+
+    menu.layer.shadowRadius =
+        16.0;
+
+
+    [_mainView addSubview:menu];
+
+    _sideMenu =
+        menu;
+
+
+    UILabel *logo =
+        [[UILabel alloc]
+            initWithFrame:
+                CGRectMake(
+                    24,
+                    64,
+                    190,
+                    50
+                )];
+
+    logo.text =
+        @"🦊  WolFox";
+
+    logo.font =
+        [UIFont
+            boldSystemFontOfSize:24];
+
+    logo.textColor =
+        UIColor.whiteColor;
+
+    [menu addSubview:logo];
+
+
+    UILabel *version =
+        [[UILabel alloc]
+            initWithFrame:
+                CGRectMake(
+                    26,
+                    110,
+                    180,
+                    22
+                )];
+
+    version.text =
+        @"Standalone Runtime";
+
+    version.font =
+        [UIFont systemFontOfSize:12];
+
+    version.textColor =
+        [UIColor
+            colorWithWhite:1.0
+                     alpha:0.45];
+
+    [menu addSubview:version];
+
+
+    UITableView *table =
+        [[UITableView alloc]
+            initWithFrame:
+                CGRectMake(
+                    0,
+                    155,
+                    250,
+                    height - 155
+                )
+                   style:
+                UITableViewStylePlain];
+
+    table.autoresizingMask =
+        UIViewAutoresizingFlexibleHeight;
+
+    table.backgroundColor =
+        UIColor.clearColor;
+
+    table.separatorStyle =
+        UITableViewCellSeparatorStyleNone;
+
+    table.delegate =
+        self;
+
+    table.dataSource =
+        self;
+
+    [menu addSubview:table];
+
+    _menuTable =
+        table;
+}
+
+
+- (void)toggleSideMenu {
+
+    _menuVisible =
+        !_menuVisible;
+
+    CGFloat targetX =
+        _menuVisible
+            ? 0
+            : -260;
+
+
+    [UIView
+        animateWithDuration:0.22
+                 animations:^{
+
+        CGRect frame =
+            self->_sideMenu.frame;
+
+        frame.origin.x =
+            targetX;
+
+        self->_sideMenu.frame =
+            frame;
+    }];
+}
+
+
+#pragma mark - Menu Table
+
+- (NSInteger)tableView:
+    (UITableView *)tableView
+ numberOfRowsInSection:
+    (NSInteger)section {
+
+    (void)tableView;
+    (void)section;
+
+    return 6;
+}
+
+
+- (UITableViewCell *)tableView:
+    (UITableView *)tableView
+ cellForRowAtIndexPath:
+    (NSIndexPath *)indexPath {
+
+    static NSString *identifier =
+        @"WFMenuCell";
+
+
+    UITableViewCell *cell =
+        [tableView
+            dequeueReusableCellWithIdentifier:
+                identifier];
+
+
+    if (cell == nil) {
+
+        cell =
+            [[UITableViewCell alloc]
+                initWithStyle:
+                    UITableViewCellStyleDefault
+              reuseIdentifier:
+                    identifier];
+
+        cell.backgroundColor =
+            UIColor.clearColor;
+
+        cell.textLabel.textColor =
+            UIColor.whiteColor;
+
+        cell.textLabel.font =
+            [UIFont
+                systemFontOfSize:16
+                          weight:UIFontWeightMedium];
+
+        cell.selectionStyle =
+            UITableViewCellSelectionStyleNone;
+    }
+
+
+    NSArray *titles =
+        @[
+            @"📍  Location",
+            @"🛣  Route",
+            @"📶  Wi-Fi",
+            @"📱  Device",
+            @"⏰  Scheduler",
+            @"ℹ️  Status"
+        ];
+
+
+    cell.textLabel.text =
+        titles[indexPath.row];
+
+
+    return cell;
+}
+
+
+- (void)tableView:
+    (UITableView *)tableView
+ didSelectRowAtIndexPath:
+    (NSIndexPath *)indexPath {
+
+    (void)tableView;
+
+
+    [self toggleSideMenu];
+
+
+    switch (indexPath.row) {
+
+        case 0:
+
+            [self showLocationMode];
+
+            break;
+
+
+        case 1:
+
+            [self
+                showUnavailable:
+                    @"Route"];
+
+            break;
+
+
+        case 2:
+
+            [self
+                showUnavailable:
+                    @"Wi-Fi Profiles"];
+
+            break;
+
+
+        case 3:
+
+            [self
+                showUnavailable:
+                    @"Device Profiles"];
+
+            break;
+
+
+        case 4:
+
+            [self
+                showUnavailable:
+                    @"Scheduler"];
+
+            break;
+
+
+        case 5:
+
+            [self showRuntimeStatus];
+
+            break;
+    }
+}
+
+
+#pragma mark - Modes
+
+- (void)showLocationMode {
+
+    _modeLabel.text =
+        @"LOCATION";
+
+    _bottomCard.hidden =
+        NO;
+}
+
+
+- (void)showUnavailable:
+    (NSString *)feature {
+
+    NSString *message =
+        [NSString
+            stringWithFormat:
+                @"%@ is not implemented in the current WolFox Core yet.",
+                feature];
+
+    [self showAlert:message];
+}
+
+
+- (void)showRuntimeStatus {
+
+    NSDictionary *snapshot =
+        [[WFRuntimeState sharedState]
+            snapshotForUI];
+
+    NSString *message =
+        [NSString
+            stringWithFormat:
+                @"Location: %@\nMode: %@\nLast action: %@",
+                [snapshot[@"locationEnabled"]
+                    boolValue]
+                    ? @"Active"
+                    : @"Default",
+                snapshot[@"locationMode"]
+                    ?: @"",
+                snapshot[@"lastAction"]
+                    ?: @""];
+
+    [self showAlert:message];
+}
+
+
 #pragma mark - Alert
 
-- (void)showMessage:
+- (void)showAlert:
     (NSString *)message {
 
     UIViewController *controller =
@@ -962,6 +1673,7 @@
         return;
     }
 
+
     while (controller
                .presentedViewController != nil) {
 
@@ -969,6 +1681,7 @@
             controller
                 .presentedViewController;
     }
+
 
     UIAlertController *alert =
         [UIAlertController
@@ -979,6 +1692,7 @@
                       preferredStyle:
                 UIAlertControllerStyleAlert];
 
+
     [alert
         addAction:
             [UIAlertAction
@@ -987,36 +1701,59 @@
                     UIAlertActionStyleDefault
                         handler:nil]];
 
+
     [controller
         presentViewController:alert
                      animated:YES
                    completion:nil];
 }
 
+
 #pragma mark - Close
 
-- (void)closePanel {
+- (void)closeMainInterface {
 
-    [_latitudeField
+    [_searchBar
         resignFirstResponder];
 
-    [_longitudeField
-        resignFirstResponder];
 
-    [_panel
+    [_mainView
         removeFromSuperview];
 
-    _panel =
+
+    _mainView =
+        nil;
+
+    _sideMenu =
+        nil;
+
+    _bottomCard =
+        nil;
+
+    _mapView =
+        nil;
+
+    _searchBar =
+        nil;
+
+    _coordinateLabel =
         nil;
 
     _statusLabel =
         nil;
 
-    _latitudeField =
+    _modeLabel =
         nil;
 
-    _longitudeField =
+    _menuTable =
         nil;
+
+    _menuVisible =
+        NO;
+
+
+    _floatingButton.hidden =
+        NO;
 }
 
 @end
