@@ -15,9 +15,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y clang
       - name: Run all Linux tests
         run: |
+          set -o pipefail
           c++ -std=c++17 -Wall -Wextra -D_USE_MATH_DEFINES Tests/AllTests.cpp Portable.cpp -o tests
-          ./tests 2>&1 | tee test_output.log
-          exit ${PIPESTATUS[0]}
+          ./tests | tee test_output.log
       - name: Upload test summary
         if: always()
         uses: actions/upload-artifact@v4
@@ -34,20 +34,15 @@ jobs:
       - name: Validate target bundle IDs (no wildcards, not empty)
         run: |
           set -e
-          BUNDLES="(grep -v '#' WolFoxTargetBundles.txt | grep -v '^[[:space:]]*' || true)"
-          if [ -z "$BUNDLES" ]; then
-            echo "FAIL: no target bundle IDs configured"
-            exit 1
-          fi
-          if echo "$BUNDLES" | grep -q '\*'; then
+          grep -v '#' WolFoxTargetBundles.txt | grep -v '^[[:space:]]*$' > /tmp/bundles.txt || true
+          test -s /tmp/bundles.txt || { echo "FAIL: no target bundle IDs configured"; exit 1; }
+          if grep -q '\*' WolFoxTargetBundles.txt; then
             echo "FAIL: wildcards forbidden"
             exit 1
           fi
-          if ! grep -q 'Bundles' wolfox.plist; then
-            echo "FAIL: wolfox.plist missing Bundles filter"
-            exit 1
-          fi
-          echo "OK: targets = $BUNDLES"
+          grep -q 'Bundles' wolfox.plist || { echo "FAIL: wolfox.plist missing Bundles filter"; exit 1; }
+          echo "OK: targets validated:"
+          cat /tmp/bundles.txt
 
   theos-build:
     name: Theos Build (Rootful + Rootless)
@@ -61,47 +56,43 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git perl rsync curl wget unzip \
-            clang llvm lld ldid python3 fakeroot dpkg-dev file xz-utils
+          sudo apt-get install -y build-essential git perl rsync curl wget unzip clang llvm lld ldid python3 fakeroot dpkg-dev file xz-utils
 
       - name: Prepare Theos + iPhoneOS SDK
         run: |
-          git clone --recursive https://github.com/theos/theos.git "$THEOS"
+          git clone --recursive https://github.com/theos/theos.git /opt/theos
           curl -L https://github.com/theos/sdks/archive/refs/heads/master.zip -o /tmp/sdks.zip
           unzip -q /tmp/sdks.zip -d /tmp/sdks
-          SDK_DIR=$(find /tmp/sdks -maxdepth 1 -type d -name "iPhoneOS*" | sort -V | tail -n1)
-          test -n "$SDK_DIR" || { echo "NO IPHONEOS SDK FOUND"; exit 1; }
-          cp -r "SDKDIR""SDK_DIR" "SDKD​IR""THEOS/sdks/iPhoneOS.sdk"
-          echo "Using SDK: $SDK_DIR"
+          find /tmp/sdks -maxdepth 1 -type d -name "iPhoneOS*" -exec cp -r {} /opt/theos/sdks/iPhoneOS.sdk \;
+          test -d /opt/theos/sdks/iPhoneOS.sdk || { echo "NO IPHONEOS SDK FOUND"; exit 1; }
+          echo "SDK installed"
 
       - name: Build Rootful package
         run: |
           export THEOS_PACKAGE_SCHEME=rootful
-          make clean && make package FINALPACKAGE=1 DEBUG=0
+          make clean
+          make package FINALPACKAGE=1 DEBUG=0
           mkdir -p artifacts
           find packages -name "*.deb" -exec cp {} artifacts/wolfox-rootful.deb \;
 
       - name: Build Rootless package
         run: |
           export THEOS_PACKAGE_SCHEME=rootless
-          make clean && make package FINALPACKAGE=1 DEBUG=0
+          make clean
+          make package FINALPACKAGE=1 DEBUG=0
           find packages -name "*.deb" -exec cp {} artifacts/wolfox-rootless.deb \;
 
       - name: Locate generated dylib from actual build output
         run: |
-          DYLIB=$(find . -type f -name "WolFox.dylib" 2>/dev/null | head -n1)
-          test -n "$DYLIB" || { echo "FAIL: WolFox.dylib not found"; exit 1; }
-          cp "$DYLIB" artifacts/WolFox.dylib
+          find . -type f -name "WolFox.dylib" -exec cp {} artifacts/WolFox.dylib \;
+          test -f artifacts/WolFox.dylib || { echo "FAIL: WolFox.dylib not found"; exit 1; }
 
       - name: Verify arm64 Mach-O dynamic library
         run: |
-          MAGIC=$(xxd -p -l 4 artifacts/WolFox.dylib)
-          [ "MAGIC"="cffaedfe"]∣∣["MAGIC" = "cffaedfe" ] || [ "MAGIC"="cffaedfe"]∣∣["MAGIC" = "feedfacf" ] \
-            || { echo "FAIL: not Mach-O (magic=$MAGIC)"; exit 1; }
-          FILE_OUT=(file−bartifacts/WolFox.dylib);echo"(file -b artifacts/WolFox.dylib); echo "(file−bartifacts/WolFox.dylib);echo"FILE_OUT"
-          echo "$FILE_OUT" | grep -qi "dynamically linked shared library" \
-            || { echo "FAIL: not a dynamic library"; exit 1; }
-          echo "$FILE_OUT" | grep -qi "arm64" || { echo "FAIL: no arm64 slice"; exit 1; }
+          file -b artifacts/WolFox.dylib
+          file -b artifacts/WolFox.dylib | grep -qi "dynamically linked shared library" || { echo "FAIL: not a dynamic library"; exit 1; }
+          file -b artifacts/WolFox.dylib | grep -qi "arm64" || { echo "FAIL: no arm64 slice"; exit 1; }
+          echo "OK: arm64 dylib verified"
 
       - name: Calculate SHA-256 checksums
         working-directory: artifacts
