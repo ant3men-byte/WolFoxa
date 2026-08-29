@@ -555,7 +555,7 @@ static void WFAuditInstallUIHook(void) {
     UIView *bar =
         [[UIView alloc]
             initWithFrame:
-                CGRectMake(0, 0, width, 72)];
+                CGRectMake(0, 44, width, 72)];
 
     bar.autoresizingMask =
         UIViewAutoresizingFlexibleWidth;
@@ -614,9 +614,9 @@ static void WFAuditInstallUIHook(void) {
             initWithFrame:
                 CGRectMake(
                     12,
-                    84,
+                    128,
                     width - 24,
-                    height - 154
+                    height - 198
                 )];
 
     _textView.autoresizingMask =
