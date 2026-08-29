@@ -918,13 +918,210 @@
 
 - (void)routeTapped {
 
-    [self auditStateForFeature:
-        @"routeTapped"
-        status:@"UI_ONLY"
-        details:@"Route panel is not connected to route engine in this UI version"];
+    WFAuditLogFeature(
+        @"routeTapped",
+        @"REQUESTED",
+        @"Preparing two-point route"
+    );
 
-    [self alert:
-        @"\u0648\u0627\u062c\u0647\u0629 \u0627\u0644\u0645\u0633\u0627\u0631 \u062c\u0627\u0647\u0632\u0629 \u0644\u0644\u062a\u0648\u0635\u064a\u0644 \u0628\u0645\u062d\u0631\u0643 Route \u0641\u064a WolFox."];
+    if (!_hasCoordinate) {
+
+        [self auditStateForFeature:
+            @"routeTapped"
+            status:@"ERROR"
+            details:@"No destination selected"];
+
+        [self alert:
+            @"\u062d\u062f\u062f \u0646\u0642\u0637\u0629 \u0627\u0644\u0648\u0635\u0648\u0644 \u0639\u0644\u0649 \u0627\u0644\u062e\u0631\u064a\u0637\u0629 \u0623\u0648\u0644\u0627\u064b."];
+
+        return;
+    }
+
+    CLLocationCoordinate2D destination =
+        _selectedCoordinate;
+
+    CLLocationCoordinate2D start =
+        kCLLocationCoordinate2DInvalid;
+
+    CLLocation *mapLocation =
+        _mapView.userLocation.location;
+
+    if (mapLocation != nil &&
+        CLLocationCoordinate2DIsValid(mapLocation.coordinate)) {
+
+        start =
+            mapLocation.coordinate;
+    }
+    else {
+
+        WFRuntimeState *state =
+            [WFRuntimeState sharedState];
+
+        if (state.locationEnabled &&
+            state.currentLatitude >= -90.0 &&
+            state.currentLatitude <= 90.0 &&
+            state.currentLongitude >= -180.0 &&
+            state.currentLongitude <= 180.0) {
+
+            start =
+                CLLocationCoordinate2DMake(
+                    state.currentLatitude,
+                    state.currentLongitude
+                );
+        }
+    }
+
+    if (!CLLocationCoordinate2DIsValid(start)) {
+
+        [self auditStateForFeature:
+            @"routeTapped"
+            status:@"ERROR"
+            details:@"No valid start location available"];
+
+        [self alert:
+            @"\u0644\u0645 \u064a\u062a\u0645 \u0627\u0644\u0639\u062b\u0648\u0631 \u0639\u0644\u0649 \u0646\u0642\u0637\u0629 \u0628\u062f\u0627\u064a\u0629. \u0627\u0636\u063a\u0637 \u0645\u0648\u0642\u0639\u064a \u0623\u0648\u0644\u0627\u064b \u062b\u0645 \u062d\u062f\u062f \u0627\u0644\u0648\u062c\u0647\u0629."];
+
+        return;
+    }
+
+    CLLocation *startLocation =
+        [[CLLocation alloc]
+            initWithLatitude:start.latitude
+            longitude:start.longitude];
+
+    CLLocation *endLocation =
+        [[CLLocation alloc]
+            initWithLatitude:destination.latitude
+            longitude:destination.longitude];
+
+    CLLocationDistance distance =
+        [startLocation distanceFromLocation:endLocation];
+
+    if (distance < 2.0) {
+
+        [self auditStateForFeature:
+            @"routeTapped"
+            status:@"ERROR"
+            details:@"Start and destination are effectively the same"];
+
+        [self alert:
+            @"\u0646\u0642\u0637\u0629 \u0627\u0644\u0628\u062f\u0627\u064a\u0629 \u0648\u0627\u0644\u0648\u062c\u0647\u0629 \u0645\u062a\u0637\u0627\u0628\u0642\u062a\u0627\u0646. \u062d\u062f\u062f \u0648\u062c\u0647\u0629 \u0623\u062e\u0631\u0649."];
+
+        return;
+    }
+
+    UIAlertController *sheet =
+        [UIAlertController
+            alertControllerWithTitle:@"Route"
+            message:[NSString stringWithFormat:
+                @"Distance: %.0f m\nEnter speed in m/s",
+                distance]
+            preferredStyle:UIAlertControllerStyleAlert];
+
+    [sheet addTextFieldWithConfigurationHandler:
+        ^(UITextField *field) {
+
+            field.placeholder = @"Speed";
+            field.text = @"5.0";
+            field.keyboardType =
+                UIKeyboardTypeDecimalPad;
+        }];
+
+    __weak WFUIController *weakSelf = self;
+
+    UIAlertAction *startAction =
+        [UIAlertAction
+            actionWithTitle:@"Start"
+            style:UIAlertActionStyleDefault
+            handler:^(UIAlertAction *action) {
+
+                (void)action;
+
+                WFUIController *selfRef =
+                    weakSelf;
+
+                if (!selfRef) return;
+
+                double speed =
+                    [sheet.textFields.firstObject.text
+                        doubleValue];
+
+                if (speed <= 0.0 || speed > 300.0) {
+
+                    [selfRef auditStateForFeature:
+                        @"routeTapped"
+                        status:@"ERROR"
+                        details:@"Invalid route speed"];
+
+                    [selfRef alert:
+                        @"\u0627\u0644\u0633\u0631\u0639\u0629 \u063a\u064a\u0631 \u0635\u062d\u064a\u062d\u0629."];
+
+                    return;
+                }
+
+                NSArray *waypoints =
+                    @[
+                        @{
+                            @"lat": @(start.latitude),
+                            @"lon": @(start.longitude)
+                        },
+                        @{
+                            @"lat": @(destination.latitude),
+                            @"lon": @(destination.longitude)
+                        }
+                    ];
+
+                WFError *e =
+                    [[WFAppManager sharedManager]
+                        startRouteWithWaypoints:waypoints
+                        speed:speed];
+
+                [selfRef auditErrorResult:
+                    e
+                    feature:@"startRoute"
+                    details:[NSString stringWithFormat:
+                        @"from=%.8f,%.8f | to=%.8f,%.8f | speed=%.2f | distance=%.2f",
+                        start.latitude,
+                        start.longitude,
+                        destination.latitude,
+                        destination.longitude,
+                        speed,
+                        distance]];
+
+                if ([e isSuccess]) {
+
+                    selfRef->_locationSwitch.on =
+                        YES;
+
+                    [selfRef alert:
+                        @"Route started \u2705"];
+                }
+                else {
+
+                    [selfRef alert:
+                        e.humanReadableMessage
+                            ?: @"Route failed."];
+                }
+
+                [selfRef refreshStatus];
+            }];
+
+    UIAlertAction *cancelAction =
+        [UIAlertAction
+            actionWithTitle:@"Cancel"
+            style:UIAlertActionStyleCancel
+            handler:nil];
+
+    [sheet addAction:startAction];
+    [sheet addAction:cancelAction];
+
+    UIViewController *presenter =
+        _overlayWindow.rootViewController;
+
+    [presenter
+        presentViewController:sheet
+        animated:YES
+        completion:nil];
 }
 
 
