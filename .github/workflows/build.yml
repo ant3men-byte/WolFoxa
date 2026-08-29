@@ -25,17 +25,27 @@ jobs:
           path: test_output.log
           if-no-files-found: error
 
-  validate-config:
+    validate-config:
     name: Validate Config
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: Validate target bundle IDs (no wildcards, not empty)
         run: |
-          BUNDLES=(grep -v '^\s*#' WolFoxTargetBundles.txt | grep -v '^\s*')
-          [ -n "$BUNDLES" ] || { echo "FAIL: no target bundle IDs configured"; exit 1; }
-          echo "$BUNDLES" | grep -q '\*' && { echo "FAIL: wildcards forbidden"; exit 1; } || true
-          grep -q 'Bundles' wolfox.plist || { echo "FAIL: wolfox.plist missing Bundles filter"; exit 1; }
+          set -e
+          BUNDLES="(grep -v '#' WolFoxTargetBundles.txt | grep -v '^[[:space:]]*' || true)"
+          if [ -z "$BUNDLES" ]; then
+            echo "FAIL: no target bundle IDs configured"
+            exit 1
+          fi
+          if echo "$BUNDLES" | grep -q '\*'; then
+            echo "FAIL: wildcards forbidden"
+            exit 1
+          fi
+          if ! grep -q 'Bundles' wolfox.plist; then
+            echo "FAIL: wolfox.plist missing Bundles filter"
+            exit 1
+          fi
           echo "OK: targets = $BUNDLES"
 
   theos-build:
