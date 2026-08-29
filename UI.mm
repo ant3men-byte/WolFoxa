@@ -420,12 +420,87 @@
     [self refreshStatus];
 }
 
+
+#pragma mark - Audit Helpers
+
+- (void)auditErrorResult:(WFError *)error
+                 feature:(NSString *)feature
+                 details:(NSString *)details {
+
+    BOOL success =
+        (error != nil && [error isSuccess]);
+
+    NSString *status =
+        success ? @"SUCCESS" : @"ERROR";
+
+    NSString *message =
+        details ?: @"";
+
+    if (!success && error != nil) {
+
+        NSString *human =
+            error.humanReadableMessage ?: @"";
+
+        NSString *technical =
+            error.technicalMessage ?: @"";
+
+        message =
+            [NSString stringWithFormat:
+                @"code=%ld | human=%@ | technical=%@%@%@",
+                (long)error.errorCode,
+                human,
+                technical,
+                message.length ? @" | " : @"",
+                message];
+    }
+
+    WFAuditLogFeature(
+        feature ?: @"unknown",
+        status,
+        message
+    );
+
+    WFAuditLogState(
+        feature ?: @"unknown",
+        [[WFRuntimeState sharedState] snapshotForUI]
+    );
+}
+
+
+- (void)auditStateForFeature:(NSString *)feature
+                      status:(NSString *)status
+                     details:(NSString *)details {
+
+    WFAuditLogFeature(
+        feature ?: @"unknown",
+        status ?: @"UNKNOWN",
+        details ?: @""
+    );
+
+    WFAuditLogState(
+        feature ?: @"unknown",
+        [[WFRuntimeState sharedState] snapshotForUI]
+    );
+}
+
 #pragma mark - Map
 
 - (void)mapLongPress:(UILongPressGestureRecognizer *)g {
     if (g.state != UIGestureRecognizerStateBegan) return;
     CGPoint p=[g locationInView:_mapView];
-    CLLocationCoordinate2D c=[_mapView convertPoint:p toCoordinateFromView:_mapView];
+    CLLocationCoordinate2D c =
+        [_mapView convertPoint:p
+          toCoordinateFromView:_mapView];
+
+    WFAuditLogFeature(
+        @"mapLongPress",
+        @"SUCCESS",
+        [NSString stringWithFormat:
+            @"lat=%.8f | lon=%.8f",
+            c.latitude,
+            c.longitude]
+    );
+
     [self selectCoordinate:c animated:YES];
 }
 
@@ -456,29 +531,122 @@
 }
 
 - (void)mapModeChanged:(UISegmentedControl *)s {
-    _mapView.mapType = s.selectedSegmentIndex == 0 ? MKMapTypeStandard : MKMapTypeSatellite;
+
+    _mapView.mapType =
+        s.selectedSegmentIndex == 0
+            ? MKMapTypeStandard
+            : MKMapTypeSatellite;
+
+    WFAuditLogFeature(
+        @"mapModeChanged",
+        @"SUCCESS",
+        [NSString stringWithFormat:
+            @"selectedIndex=%ld | mapType=%@",
+            (long)s.selectedSegmentIndex,
+            s.selectedSegmentIndex == 0
+                ? @"STANDARD"
+                : @"SATELLITE"]
+    );
 }
 
 - (void)centerSelected {
-    if (!_hasCoordinate) return;
-    MKCoordinateRegion r=MKCoordinateRegionMakeWithDistance(_selectedCoordinate,1500,1500);
+
+    if (!_hasCoordinate) {
+
+        WFAuditLogFeature(
+            @"centerSelected",
+            @"ERROR",
+            @"No selected coordinate"
+        );
+
+        return;
+    }
+
+    MKCoordinateRegion r =
+        MKCoordinateRegionMakeWithDistance(
+            _selectedCoordinate,
+            1500,
+            1500
+        );
+
     [_mapView setRegion:r animated:YES];
+
+    WFAuditLogFeature(
+        @"centerSelected",
+        @"SUCCESS",
+        [NSString stringWithFormat:
+            @"lat=%.8f | lon=%.8f",
+            _selectedCoordinate.latitude,
+            _selectedCoordinate.longitude]
+    );
 }
 
 - (void)goMyLocation {
-    CLLocation *loc=_mapView.userLocation.location;
+
+    WFAuditLogFeature(
+        @"goMyLocation",
+        @"REQUESTED",
+        @"Reading MKMapView userLocation"
+    );
+
+    CLLocation *loc = _mapView.userLocation.location;
+
     if (!loc) {
-        [self alert:@"\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u062D\u0627\u0644\u064A \u063A\u064A\u0631 \u0645\u062A\u0627\u062D."];
+
+        WFAuditLogFeature(
+            @"goMyLocation",
+            @"NO_LOCATION",
+            @"MKMapView userLocation.location is nil"
+        );
+
+        [self alert:@"\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u062d\u0627\u0644\u064a \u063a\u064a\u0631 \u0645\u062a\u0627\u062d."];
+
         return;
     }
-    [self selectCoordinate:loc.coordinate animated:YES];
+
+    WFAuditLogLocation(
+        @"goMyLocation",
+        loc
+    );
+
+    [self selectCoordinate:
+        loc.coordinate
+        animated:YES];
+
+    [self auditStateForFeature:
+        @"goMyLocation"
+        status:@"SUCCESS"
+        details:[NSString stringWithFormat:
+            @"selectedLat=%.8f | selectedLon=%.8f",
+            loc.coordinate.latitude,
+            loc.coordinate.longitude]];
 }
+
 
 #pragma mark - Search
 
 - (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
-    NSString *q=searchBar.text;
-    if (!q.length) return;
+
+    NSString *q = searchBar.text;
+
+    if (!q.length) {
+
+        WFAuditLogFeature(
+            @"searchLocation",
+            @"ERROR",
+            @"Empty search query"
+        );
+
+        return;
+    }
+
+    WFAuditLogFeature(
+        @"searchLocation",
+        @"REQUESTED",
+        [NSString stringWithFormat:
+            @"query=%@",
+            q]
+    );
     [searchBar resignFirstResponder];
 
     MKLocalSearchRequest *req=[[MKLocalSearchRequest alloc] init];
@@ -503,94 +671,340 @@
 #pragma mark - Core actions
 
 - (void)locationSwitchChanged:(UISwitch *)s {
+
+    WFAuditLogFeature(
+        @"locationSwitchChanged",
+        @"REQUESTED",
+        s.isOn ? @"requested=ON" : @"requested=OFF"
+    );
+
     if (s.isOn) {
+
         if (!_hasCoordinate) {
-            s.on=NO;
-            [self alert:@"\u062D\u062F\u062F \u0645\u0648\u0642\u0639\u0627\u064B \u0623\u0648\u0644\u0627\u064B."];
+
+            s.on = NO;
+
+            [self auditStateForFeature:
+                @"locationSwitchChanged"
+                status:@"ERROR"
+                details:@"No selected coordinate"];
+
+            [self alert:@"\u062d\u062f\u062f \u0645\u0648\u0642\u0639\u0627\u064b \u0623\u0648\u0644\u0627\u064b."];
+
             return;
         }
 
-        WFError *e=[[WFAppManager sharedManager]
-                    activateStaticLocationWithLatitude:_selectedCoordinate.latitude
-                    longitude:_selectedCoordinate.longitude];
+        WFError *e =
+            [[WFAppManager sharedManager]
+                activateStaticLocationWithLatitude:
+                    _selectedCoordinate.latitude
+                longitude:
+                    _selectedCoordinate.longitude];
+
+        [self auditErrorResult:
+            e
+            feature:@"activateStaticLocation"
+            details:[NSString stringWithFormat:
+                @"requestedLat=%.8f | requestedLon=%.8f",
+                _selectedCoordinate.latitude,
+                _selectedCoordinate.longitude]];
+
         if (![e isSuccess]) {
-            s.on=NO;
-            [self alert:e.humanReadableMessage ?: @"\u062A\u0639\u0630\u0631 \u062A\u0641\u0639\u064A\u0644 \u0627\u0644\u0645\u0648\u0642\u0639."];
+
+            s.on = NO;
+
+            [self alert:
+                e.humanReadableMessage
+                    ?: @"\u062a\u0639\u0630\u0631 \u062a\u0641\u0639\u064a\u0644 \u0627\u0644\u0645\u0648\u0642\u0639."];
         }
-    } else {
-        [[WFAppManager sharedManager] restoreDefaultLocation];
     }
+    else {
+
+        WFError *e =
+            [[WFAppManager sharedManager]
+                restoreDefaultLocation];
+
+        [self auditErrorResult:
+            e
+            feature:@"restoreDefaultLocation"
+            details:@"source=locationSwitchChanged"];
+    }
+
     [self refreshStatus];
 }
+
 
 - (void)restoreLocation {
-    WFError *e=[[WFAppManager sharedManager] restoreDefaultLocation];
-    _locationSwitch.on=NO;
+
+    WFAuditLogFeature(
+        @"restoreLocation",
+        @"REQUESTED",
+        @"Restore button pressed"
+    );
+
+    WFError *e =
+        [[WFAppManager sharedManager]
+            restoreDefaultLocation];
+
+    _locationSwitch.on = NO;
+
+    [self auditErrorResult:
+        e
+        feature:@"restoreLocation"
+        details:@"source=Restore button"];
+
     [self refreshStatus];
-    [self alert:[e isSuccess] ? @"\u062A\u0645\u062A \u0627\u0644\u0627\u0633\u062A\u0639\u0627\u062F\u0629 \u2705" :
-     (e.humanReadableMessage ?: @"\u062A\u0639\u0630\u0631\u062A \u0627\u0644\u0627\u0633\u062A\u0639\u0627\u062F\u0629.")];
+
+    [self alert:
+        [e isSuccess]
+            ? @"\u062a\u0645\u062a \u0627\u0644\u0627\u0633\u062a\u0639\u0627\u062f\u0629 \u2705"
+            : (e.humanReadableMessage
+                ?: @"\u062a\u0639\u0630\u0631\u062a \u0627\u0644\u0627\u0633\u062a\u0639\u0627\u062f\u0629.")];
 }
+
 
 - (void)saveCurrent {
+
+    WFAuditLogFeature(
+        @"saveCurrent",
+        @"REQUESTED",
+        @"Save button pressed"
+    );
+
     if (!_hasCoordinate) {
-        [self alert:@"\u062D\u062F\u062F \u0645\u0648\u0642\u0639\u0627\u064B \u0623\u0648\u0644\u0627\u064B."];
+
+        [self auditStateForFeature:
+            @"saveCurrent"
+            status:@"ERROR"
+            details:@"No selected coordinate"];
+
+        [self alert:@"\u062d\u062f\u062f \u0645\u0648\u0642\u0639\u0627\u064b \u0623\u0648\u0644\u0627\u064b."];
+
         return;
     }
-    WFError *e=[[WFLocationService sharedService]
-                addFavoriteWithName:@"WolFox Location"
-                latitude:_selectedCoordinate.latitude
-                longitude:_selectedCoordinate.longitude];
-    [self alert:[e isSuccess] ? @"\u062A\u0645 \u062D\u0641\u0638 \u0627\u0644\u0645\u0648\u0642\u0639 \u2705" :
-     (e.humanReadableMessage ?: @"\u062A\u0639\u0630\u0631 \u0627\u0644\u062D\u0641\u0638.")];
+
+    WFError *e =
+        [[WFLocationService sharedService]
+            addFavoriteWithName:@"WolFox Location"
+            latitude:_selectedCoordinate.latitude
+            longitude:_selectedCoordinate.longitude];
+
+    WFAuditLogFeature(
+        @"saveCurrent",
+        [e isSuccess] ? @"SUCCESS" : @"ERROR",
+        [NSString stringWithFormat:
+            @"lat=%.8f | lon=%.8f | code=%ld | message=%@",
+            _selectedCoordinate.latitude,
+            _selectedCoordinate.longitude,
+            (long)e.errorCode,
+            e.humanReadableMessage ?: @""]
+    );
+
+    WFAuditLogState(
+        @"saveCurrent",
+        [[WFRuntimeState sharedState] snapshotForUI]
+    );
+
+    [self alert:
+        [e isSuccess]
+            ? @"\u062a\u0645 \u062d\u0641\u0638 \u0627\u0644\u0645\u0648\u0642\u0639 \u2705"
+            : (e.humanReadableMessage
+                ?: @"\u062a\u0639\u0630\u0631 \u0627\u0644\u062d\u0641\u0638.")];
 }
+
 
 - (void)showSaved {
-    NSArray *items=[[WFLocationService sharedService] favorites];
-    [self alert:[NSString stringWithFormat:@"\u0639\u062F\u062F \u0627\u0644\u0645\u0648\u0627\u0642\u0639 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0629: %lu",
-                 (unsigned long)items.count]];
+
+    NSArray *items =
+        [[WFLocationService sharedService]
+            favorites];
+
+    WFAuditLogFeature(
+        @"showSaved",
+        @"SUCCESS",
+        [NSString stringWithFormat:
+            @"favoritesCount=%lu",
+            (unsigned long)items.count]
+    );
+
+    [self alert:
+        [NSString stringWithFormat:
+            @"\u0639\u062f\u062f \u0627\u0644\u0645\u0648\u0627\u0642\u0639 \u0627\u0644\u0645\u062d\u0641\u0648\u0638\u0629: %lu",
+            (unsigned long)items.count]];
 }
+
 
 - (void)routeTapped {
-    [self alert:@"\u0648\u0627\u062C\u0647\u0629 \u0627\u0644\u0645\u0633\u0627\u0631 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0648\u0635\u064A\u0644 \u0628\u0645\u062D\u0631\u0643 Route \u0641\u064A WolFox."];
+
+    [self auditStateForFeature:
+        @"routeTapped"
+        status:@"UI_ONLY"
+        details:@"Route panel is not connected to route engine in this UI version"];
+
+    [self alert:
+        @"\u0648\u0627\u062c\u0647\u0629 \u0627\u0644\u0645\u0633\u0627\u0631 \u062c\u0627\u0647\u0632\u0629 \u0644\u0644\u062a\u0648\u0635\u064a\u0644 \u0628\u0645\u062d\u0631\u0643 Route \u0641\u064a WolFox."];
 }
+
 
 - (void)randomTapped {
-    WFError *e=[[WFAppManager sharedManager] startRandomMovementWithRadius:100.0];
-    [self alert:[e isSuccess] ? @"\u062A\u0645 \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0648\u0636\u0639 \u0627\u0644\u0639\u0634\u0648\u0627\u0626\u064A \u0641\u064A WolFox Runtime \u2705" :
-     (e.humanReadableMessage ?: @"\u062A\u0639\u0630\u0631 \u0627\u0644\u062A\u0634\u063A\u064A\u0644.")];
+
+    WFAuditLogFeature(
+        @"randomTapped",
+        @"REQUESTED",
+        @"radius=100.0m"
+    );
+
+    WFError *e =
+        [[WFAppManager sharedManager]
+            startRandomMovementWithRadius:100.0];
+
+    [self auditErrorResult:
+        e
+        feature:@"startRandomMovement"
+        details:@"radius=100.0m"];
+
+    [self alert:
+        [e isSuccess]
+            ? @"\u062a\u0645 \u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u0648\u0636\u0639 \u0627\u0644\u0639\u0634\u0648\u0627\u0626\u064a \u0641\u064a WolFox Runtime \u2705"
+            : (e.humanReadableMessage
+                ?: @"\u062a\u0639\u0630\u0631 \u0627\u0644\u062a\u0634\u063a\u064a\u0644.")];
+
     [self refreshStatus];
 }
+
 
 - (void)scheduleTapped {
-    WFError *e=[[WFAppManager sharedManager] startScheduler];
-    [self alert:[e isSuccess] ? @"\u062A\u0645 \u062A\u0634\u063A\u064A\u0644 Scheduler \u0641\u064A WolFox Runtime \u2705" :
-     (e.humanReadableMessage ?: @"\u062A\u0639\u0630\u0631 \u0627\u0644\u062A\u0634\u063A\u064A\u0644.")];
+
+    WFAuditLogFeature(
+        @"scheduleTapped",
+        @"REQUESTED",
+        @"Start scheduler requested"
+    );
+
+    WFError *e =
+        [[WFAppManager sharedManager]
+            startScheduler];
+
+    [self auditErrorResult:
+        e
+        feature:@"startScheduler"
+        details:@"source=Scheduler button"];
+
+    [self alert:
+        [e isSuccess]
+            ? @"\u062a\u0645 \u062a\u0634\u063a\u064a\u0644 Scheduler \u0641\u064a WolFox Runtime \u2705"
+            : (e.humanReadableMessage
+                ?: @"\u062a\u0639\u0630\u0631 \u0627\u0644\u062a\u0634\u063a\u064a\u0644.")];
+
     [self refreshStatus];
 }
+
 
 - (void)wifiTapped {
-    [self alert:@"\u0648\u0627\u062C\u0647\u0629 Wi-Fi \u062C\u0627\u0647\u0632\u0629. \u064A\u0644\u0632\u0645 \u0627\u062E\u062A\u064A\u0627\u0631 Profile ID \u0644\u0631\u0628\u0637\u0647\u0627 \u0628\u0627\u0644\u0640 Core."];
+
+    [self auditStateForFeature:
+        @"wifiTapped"
+        status:@"UI_ONLY"
+        details:@"Wi-Fi profile picker is not connected in this UI version"];
+
+    [self alert:
+        @"\u0648\u0627\u062c\u0647\u0629 Wi-Fi \u062c\u0627\u0647\u0632\u0629. \u064a\u0644\u0632\u0645 \u0627\u062e\u062a\u064a\u0627\u0631 Profile ID \u0644\u0631\u0628\u0637\u0647\u0627 \u0628\u0627\u0644\u0640 Core."];
 }
+
 
 - (void)bluetoothTapped {
-    [self alert:@"Bluetooth UI \u0641\u0642\u0637 \u0641\u064A \u0647\u0630\u0647 \u0627\u0644\u0646\u0633\u062E\u0629."];
+
+    [self auditStateForFeature:
+        @"bluetoothTapped"
+        status:@"UI_ONLY"
+        details:@"Bluetooth feature is not connected in this build"];
+
+    [self alert:
+        @"Bluetooth UI \u0641\u0642\u0637 \u0641\u064a \u0647\u0630\u0647 \u0627\u0644\u0646\u0633\u062e\u0629."];
 }
+
 
 - (void)deviceAction:(UIButton *)sender {
-    if (sender.tag==3) {
-        WFError *e=[[WFAppManager sharedManager] setActiveDeviceProfileWithID:@""];
-        (void)e;
+
+    NSString *actionName = @"unknown";
+
+    switch (sender.tag) {
+        case 0: actionName = @"copy"; break;
+        case 1: actionName = @"fill"; break;
+        case 2: actionName = @"identity"; break;
+        case 3: actionName = @"restore"; break;
+        default: break;
     }
-    [self alert:@"Device Profile UI \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0648\u0635\u064A\u0644 \u0628\u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0641\u0639\u0644\u064A\u0629."];
+
+    WFAuditLogFeature(
+        @"deviceAction",
+        @"REQUESTED",
+        [NSString stringWithFormat:
+            @"action=%@ | tag=%ld",
+            actionName,
+            (long)sender.tag]
+    );
+
+    if (sender.tag == 3) {
+
+        WFError *e =
+            [[WFAppManager sharedManager]
+                setActiveDeviceProfileWithID:@""];
+
+        [self auditErrorResult:
+            e
+            feature:@"restoreDeviceProfile"
+            details:@"profileID=<empty>"];
+    }
+    else {
+
+        [self auditStateForFeature:
+            @"deviceAction"
+            status:@"UI_ONLY"
+            details:[NSString stringWithFormat:
+                @"action=%@ is not connected to data layer",
+                actionName]];
+    }
+
+    [self alert:
+        @"Device Profile UI \u062c\u0627\u0647\u0632\u0629 \u0644\u0644\u062a\u0648\u0635\u064a\u0644 \u0628\u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0641\u0639\u0644\u064a\u0629."];
 }
 
+
 - (void)stopAll {
-    [[WFAppManager sharedManager] stopMovement];
-    [[WFAppManager sharedManager] restoreDefaultLocation];
-    _locationSwitch.on=NO;
+
+    WFAuditLogFeature(
+        @"stopAll",
+        @"REQUESTED",
+        @"Stopping movement and restoring default location"
+    );
+
+    WFError *stopError =
+        [[WFAppManager sharedManager]
+            stopMovement];
+
+    [self auditErrorResult:
+        stopError
+        feature:@"stopMovement"
+        details:@"source=Stop All"];
+
+    WFError *restoreError =
+        [[WFAppManager sharedManager]
+            restoreDefaultLocation];
+
+    [self auditErrorResult:
+        restoreError
+        feature:@"restoreDefaultLocation"
+        details:@"source=Stop All"];
+
+    _locationSwitch.on = NO;
+
     [self refreshStatus];
-    [self alert:@"\u062A\u0645 \u0625\u064A\u0642\u0627\u0641 \u062D\u0627\u0644\u0629 WolFox Runtime \u0627\u0644\u062D\u0627\u0644\u064A\u0629."];
+
+    [self alert:
+        @"\u062a\u0645 \u0625\u064a\u0642\u0627\u0641 \u062d\u0627\u0644\u0629 WolFox Runtime \u0627\u0644\u062d\u0627\u0644\u064a\u0629."];
 }
+
 
 - (void)refreshStatus {
     NSDictionary *s=[[WFRuntimeState sharedState] snapshotForUI];
