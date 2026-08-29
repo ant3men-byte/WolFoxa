@@ -1,0 +1,111 @@
+name: WolFox Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  linux-tests:
+    name: Linux Unit Tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Run all Linux tests
+        run: |
+          c++ -std=c++17 -Wall -Wextra -D_USE_MATH_DEFINES Tests/AllTests.cpp Portable.cpp -o tests
+          ./tests 2>&1 | tee test_output.log
+          exit ${PIPESTATUS[0]}
+      - name: Upload test summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-test-logs
+          path: test_output.log
+          if-no-files-found: error
+
+  validate-config:
+    name: Validate Config
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate target bundle IDs (no wildcards, not empty)
+        run: |
+          BUNDLES=(grep -v '^\s*#' WolFoxTargetBundles.txt | grep -v '^\s*')
+          [ -n "$BUNDLES" ] || { echo "FAIL: no target bundle IDs configured"; exit 1; }
+          echo "$BUNDLES" | grep -q '\*' && { echo "FAIL: wildcards forbidden"; exit 1; } || true
+          grep -q 'Bundles' wolfox.plist || { echo "FAIL: wolfox.plist missing Bundles filter"; exit 1; }
+          echo "OK: targets = $BUNDLES"
+
+  theos-build:
+    name: Theos Build (Rootful + Rootless)
+    needs: [linux-tests, validate-config]
+    runs-on: ubuntu-22.04
+    env:
+      THEOS: /opt/theos
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git perl rsync curl wget unzip \
+            clang llvm lld ldid python3 fakeroot dpkg-dev file xz-utils
+
+      - name: Prepare Theos + iPhoneOS SDK
+        run: |
+          git clone --recursive https://github.com/theos/theos.git "$THEOS"
+          curl -L https://github.com/theos/sdks/archive/refs/heads/master.zip -o /tmp/sdks.zip
+          unzip -q /tmp/sdks.zip -d /tmp/sdks
+          SDK_DIR=$(find /tmp/sdks -maxdepth 1 -type d -name "iPhoneOS*" | sort -V | tail -n1)
+          test -n "$SDK_DIR" || { echo "NO IPHONEOS SDK FOUND"; exit 1; }
+          cp -r "SDKDIR""SDK_DIR" "SDKD​IR""THEOS/sdks/iPhoneOS.sdk"
+          grep -q '15.8' Makefile || { echo "FAIL: deployment target 15.8 missing"; exit 1; }
+          echo "Using SDK: $SDK_DIR"
+
+      - name: Build Rootful package
+        run: |
+          export THEOS_PACKAGE_SCHEME=rootful
+          make clean && make package FINALPACKAGE=1 DEBUG=0
+          mkdir -p artifacts
+          find packages -name "*.deb" -exec cp {} artifacts/wolfox-rootful.deb \;
+
+      - name: Build Rootless package
+        run: |
+          export THEOS_PACKAGE_SCHEME=rootless
+          make clean && make package FINALPACKAGE=1 DEBUG=0
+          find packages -name "*.deb" -exec cp {} artifacts/wolfox-rootless.deb \;
+
+      - name: Locate generated dylib from actual build output
+        run: |
+          DYLIB=$(find . -type f -name "WolFox.dylib" 2>/dev/null | head -n1)
+          test -n "$DYLIB" || { echo "FAIL: WolFox.dylib not found"; exit 1; }
+          cp "$DYLIB" artifacts/WolFox.dylib
+
+      - name: Verify arm64 Mach-O dynamic library
+        run: |
+          MAGIC=$(xxd -p -l 4 artifacts/WolFox.dylib)
+          [ "MAGIC"="cffaedfe"]∣∣["MAGIC" = "cffaedfe" ] || [ "MAGIC"="cffaedfe"]∣∣["MAGIC" = "feedfacf" ] \
+            || { echo "FAIL: not Mach-O (magic=$MAGIC)"; exit 1; }
+          FILE_OUT=(file−bartifacts/WolFox.dylib);echo"(file -b artifacts/WolFox.dylib); echo "(file−bartifacts/WolFox.dylib);echo"FILE_OUT"
+          echo "$FILE_OUT" | grep -qi "dynamically linked shared library" \
+            || { echo "FAIL: not a dynamic library"; exit 1; }
+          echo "$FILE_OUT" | grep -qi "arm64" || { echo "FAIL: no arm64 slice"; exit 1; }
+
+      - name: Calculate SHA-256 checksums
+        working-directory: artifacts
+        run: |
+          sha256sum WolFox.dylib wolfox-rootful.deb wolfox-rootless.deb > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload final artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: WolFox-build-artifacts
+          path: |
+            artifacts/WolFox.dylib
+            artifacts/wolfox-rootful.deb
+            artifacts/wolfox-rootless.deb
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
