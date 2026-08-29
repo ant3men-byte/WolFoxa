@@ -557,6 +557,33 @@
     );
 
     [self selectCoordinate:c animated:YES];
+
+    // If static location is already enabled, immediately apply the newly
+    // selected coordinate so the runtime and CLLocation hooks stay in sync.
+    if (_locationSwitch.isOn) {
+
+        WFAuditLogFeature(
+            @"mapLongPressLiveUpdate",
+            @"REQUESTED",
+            [NSString stringWithFormat:
+                @"lat=%.8f | lon=%.8f",
+                c.latitude,
+                c.longitude]
+        );
+
+        WFError *e =
+            [[WFAppManager sharedManager]
+                activateStaticLocationWithLatitude:c.latitude
+                longitude:c.longitude];
+
+        [self auditErrorResult:
+            e
+            feature:@"mapLongPressLiveUpdate"
+            details:[NSString stringWithFormat:
+                @"lat=%.8f | lon=%.8f",
+                c.latitude,
+                c.longitude]];
+    }
 }
 
 - (void)selectCoordinate:(CLLocationCoordinate2D)c animated:(BOOL)animated {
