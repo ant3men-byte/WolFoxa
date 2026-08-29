@@ -1,81 +1,155 @@
-  theos-build:
-    name: Theos Build - Dylib Only
-    needs: [linux-tests, validate-config]
+name: WolFox Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+env:
+  THEOS: /opt/theos
+
+jobs:
+  linux-tests:
+    name: Linux Unit Tests
     runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install compiler
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            git \
-            perl \
-            rsync \
-            curl \
-            wget \
-            unzip \
-            clang \
-            llvm \
-            lld \
-            python3 \
-            file \
-            xz-utils
+          sudo apt-get install -y clang
 
-      - name: Install ldid
+      - name: Run all Linux tests
         run: |
-          curl -L \
-            https://github.com/ProcursusTeam/ldid/releases/latest/download/ldid_linux_x86_64 \
-            -o /usr/local/bin/ldid
+          set -eo pipefail
 
-          chmod +x /usr/local/bin/ldid
+          c++ \
+            -std=c++17 \
+            -Wall \
+            -Wextra \
+            -D_USE_MATH_DEFINES \
+            Tests/AllTests.cpp \
+            Portable.cpp \
+            -o tests
 
-          echo "ldid installed successfully"
+          ./tests 2>&1 | tee test_output.log
 
-      - name: Prepare Theos + iPhoneOS SDK + Toolchain
+      - name: Upload test summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-test-logs
+          path: test_output.log
+          if-no-files-found: error
+
+
+  validate-config:
+    name: Validate Config
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate target bundle IDs
         run: |
           set -e
 
-          git clone --recursive https://github.com/theos/theos.git /opt/theos
+          grep -v '#' WolFoxTargetBundles.txt \
+            | grep -v '^[[:space:]]*$' \
+            > /tmp/bundles.txt || true
 
-          curl -L \
-            https://github.com/theos/sdks/archive/refs/heads/master.zip \
-            -o /tmp/sdks.zip
-
-          unzip -q /tmp/sdks.zip -d /tmp/sdks
-
-          mkdir -p /opt/theos/sdks
-
-          cp -r /tmp/sdks/sdks-master/iPhoneOS* /opt/theos/sdks/
-
-          echo "Available SDKs:"
-          ls -la /opt/theos/sdks
-
-          mkdir -p /opt/theos/toolchain
-
-          curl -L \
-            https://github.com/theos/toolchain/releases/latest/download/linux-x86_64.tar.xz \
-            -o /tmp/theos-toolchain.tar.xz
-
-          tar -xJf /tmp/theos-toolchain.tar.xz \
-            -C /opt/theos/toolchain
-
-          echo "Toolchain files:"
-          find /opt/theos/toolchain -maxdepth 5 -type f | head -100
-
-          test -x /opt/theos/toolchain/linux/iphone/bin/clang || {
-            echo "FAIL: iOS clang not found"
+          if [ ! -s /tmp/bundles.txt ]; then
+            echo "FAIL: no target bundle IDs configured"
             exit 1
-          }
+          fi
 
-          test -x /opt/theos/toolchain/linux/iphone/bin/clang++ || {
-            echo "FAIL: iOS clang++ not found"
+          if grep -q -F '*' WolFoxTargetBundles.txt; then
+            echo "FAIL: wildcards forbidden"
             exit 1
-          }
+          fi
 
-          /opt/theos/toolchain/linux/iphone/bin/clang --version
+          if ! grep -q 'Bundles' wolfox.plist; then
+            echo "FAIL: wolfox.plist missing Bundles filter"
+            exit 1
+          fi
+
+          echo "OK: targets validated:"
+          cat /tmp/bundles.txt
+
+
+  theos-build:
+    name: Theos Build - Dylib Only
+    needs:
+      - linux-tests
+      - validate-config
+
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            bash \
+            curl \
+            sudo \
+            git \
+            build-essential \
+            perl \
+            rsync \
+            wget \
+            unzip \
+            zip \
+            xz-utils \
+            python3 \
+            clang \
+            llvm \
+            lld \
+            file \
+            fakeroot \
+            dpkg-dev
+
+
+      - name: Install Theos
+        run: |
+          set -e
+
+          sudo mkdir -p /opt/theos
+          sudo chown -R "$USER":"$USER" /opt/theos
+
+          bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
+
+          echo "Theos installation completed."
+
+
+      - name: Verify Theos installation
+        run: |
+          set -e
+
+          echo "THEOS=$THEOS"
+
+          echo "Checking Theos:"
+          test -d "$THEOS"
+
+          echo "Checking iOS toolchain:"
+          test -x "$THEOS/toolchain/linux/iphone/bin/clang"
+          test -x "$THEOS/toolchain/linux/iphone/bin/clang++"
+
+          echo "clang:"
+          "$THEOS/toolchain/linux/iphone/bin/clang" --version
+
+          echo "clang++:"
+          "$THEOS/toolchain/linux/iphone/bin/clang++" --version
+
+          echo "Installed SDKs:"
+          ls -la "$THEOS/sdks"
+
 
       - name: Build WolFox dylib
         run: |
@@ -83,14 +157,18 @@
 
           unset THEOS_PACKAGE_SCHEME
 
+          echo "Cleaning old build..."
           make clean
+
+          echo "Building WolFox.dylib..."
           make FINALPACKAGE=1 DEBUG=0
+
 
       - name: Locate generated WolFox.dylib
         run: |
           set -e
 
-          echo "Searching for WolFox.dylib..."
+          echo "Searching for generated WolFox.dylib..."
 
           find . -type f -name "WolFox.dylib" -print
 
@@ -101,33 +179,56 @@
             exit 1
           fi
 
+          echo "Found dylib:"
+          echo "$DYLIB_PATH"
+
           mkdir -p artifacts
 
-          cp -v "$DYLIB_PATH" artifacts/WolFox.dylib
+          cp -v \
+            "$DYLIB_PATH" \
+            artifacts/WolFox.dylib
 
-      - name: Verify arm64 Mach-O dylib
+
+      - name: Verify Mach-O dylib
         run: |
           set -e
 
+          echo "File information:"
           file artifacts/WolFox.dylib
 
-          file -b artifacts/WolFox.dylib | grep -qi "dynamically linked shared library" || {
-            echo "FAIL: WolFox.dylib is not a Mach-O dynamic library"
-            exit 1
-          }
+          FILE_INFO="$(file -b artifacts/WolFox.dylib)"
 
-          file -b artifacts/WolFox.dylib | grep -qi "arm64" || {
-            echo "FAIL: WolFox.dylib has no arm64 slice"
-            exit 1
-          }
+          echo "$FILE_INFO"
+
+          echo "$FILE_INFO" \
+            | grep -qi "dynamically linked shared library" \
+            || {
+              echo "FAIL: WolFox.dylib is not a dynamic library"
+              exit 1
+            }
+
+          echo "$FILE_INFO" \
+            | grep -qi "arm64" \
+            || {
+              echo "FAIL: WolFox.dylib does not contain arm64"
+              exit 1
+            }
+
+          echo "WolFox.dylib verification passed."
+
 
       - name: Calculate SHA-256 checksum
         working-directory: artifacts
         run: |
+          set -e
+
           sha256sum WolFox.dylib > SHA256SUMS.txt
+
+          echo "SHA-256:"
           cat SHA256SUMS.txt
 
-      - name: Upload final artifacts
+
+      - name: Upload WolFox artifacts
         uses: actions/upload-artifact@v4
         with:
           name: WolFox-dylib
