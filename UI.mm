@@ -160,7 +160,7 @@
     b.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.25].CGColor;
     b.layer.shadowOpacity = 0.35;
     b.layer.shadowRadius = 8;
-    [b setTitle:@"ð¦" forState:UIControlStateNormal];
+    [b setTitle:@"\U0001F98A" forState:UIControlStateNormal];
     b.titleLabel.font = [UIFont systemFontOfSize:29];
     [b addTarget:self action:@selector(togglePanel) forControlEvents:UIControlEventTouchUpInside];
 
@@ -225,14 +225,14 @@
     CGFloat inner = W - margin*2;
 
     // Header
-    UILabel *logo = [self label:@"ð¦  WolFox" frame:CGRectMake(18,16,175,38) size:24 bold:YES];
+    UILabel *logo = [self label:@"\U0001F98A  WolFox" frame:CGRectMake(18,16,175,38) size:24 bold:YES];
     [content addSubview:logo];
 
     UILabel *sub = [self label:@"Standalone Runtime" frame:CGRectMake(70,48,170,18) size:11 bold:NO];
     sub.textColor = [UIColor colorWithWhite:1 alpha:0.45];
     [content addSubview:sub];
 
-    UIButton *support = [self button:@"âï¸  Ø§ÙØ¯Ø¹Ù" frame:CGRectMake(W-165,14,92,42)
+    UIButton *support = [self button:@"\u2708\uFE0E  \u0627\u0644\u062F\u0639\u0645" frame:CGRectMake(W-165,14,92,42)
                                 tint:[UIColor colorWithRed:0.0 green:0.68 blue:0.92 alpha:1]];
     [support addTarget:self action:@selector(showSupport) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:support];
@@ -241,7 +241,7 @@
     info.frame = CGRectMake(W-68,15,38,38);
     info.backgroundColor = [UIColor colorWithRed:0.16 green:0.76 blue:0.29 alpha:1];
     info.layer.cornerRadius = 19;
-    [info setTitle:@"â" forState:UIControlStateNormal];
+    [info setTitle:@"\u24D8" forState:UIControlStateNormal];
     [info setTitleColor:UIColor.blackColor forState:UIControlStateNormal];
     info.titleLabel.font = [UIFont boldSystemFontOfSize:22];
     [info addTarget:self action:@selector(showStatus) forControlEvents:UIControlEventTouchUpInside];
@@ -249,7 +249,7 @@
 
     UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
     close.frame = CGRectMake(W-34,17,28,34);
-    [close setTitle:@"Ã" forState:UIControlStateNormal];
+    [close setTitle:@"\u00D7" forState:UIControlStateNormal];
     [close setTitleColor:[UIColor colorWithWhite:1 alpha:.65] forState:UIControlStateNormal];
     close.titleLabel.font = [UIFont systemFontOfSize:30];
     [close addTarget:self action:@selector(closePanel) forControlEvents:UIControlEventTouchUpInside];
@@ -258,7 +258,7 @@
     // Search
     _searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(margin,72,inner,48)];
     _searchBar.delegate = self;
-    _searchBar.placeholder = @"Ø¨Ø­Ø« Ø¹Ù ÙÙÙØ¹";
+    _searchBar.placeholder = @"\u0628\u062D\u062B \u0639\u0646 \u0645\u0648\u0642\u0639";
     _searchBar.searchBarStyle = UISearchBarStyleMinimal;
     _searchBar.barStyle = UIBarStyleBlack;
     [content addSubview:_searchBar];
@@ -272,9 +272,9 @@
     UIColor *purple = [UIColor colorWithRed:.58 green:.31 blue:.92 alpha:1];
 
     CGFloat gap=8, third=(inner-gap*2)/3.0;
-    UIButton *saved=[self button:@"ð Ø§ÙÙØ­ÙÙØ¸Ø§Øª" frame:CGRectMake(margin,130,third,48) tint:orange];
-    UIButton *save=[self button:@"â  Ø­ÙØ¸" frame:CGRectMake(margin+third+gap,130,third,48) tint:green];
-    UIButton *restore=[self button:@"â¶  Ø§Ø³ØªØ¹Ø§Ø¯Ø©" frame:CGRectMake(margin+(third+gap)*2,130,third,48) tint:red];
+    UIButton *saved=[self button:@"\U0001F516 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0627\u062A" frame:CGRectMake(margin,130,third,48) tint:orange];
+    UIButton *save=[self button:@"\u271A  \u062D\u0641\u0638" frame:CGRectMake(margin+third+gap,130,third,48) tint:green];
+    UIButton *restore=[self button:@"\u21B6  \u0627\u0633\u062A\u0639\u0627\u062F\u0629" frame:CGRectMake(margin+(third+gap)*2,130,third,48) tint:red];
     [saved addTarget:self action:@selector(showSaved) forControlEvents:UIControlEventTouchUpInside];
     [save addTarget:self action:@selector(saveCurrent) forControlEvents:UIControlEventTouchUpInside];
     [restore addTarget:self action:@selector(restoreLocation) forControlEvents:UIControlEventTouchUpInside];
@@ -293,7 +293,7 @@
     lp.minimumPressDuration = .3;
     [_mapView addGestureRecognizer:lp];
 
-    UIButton *expand=[self button:@"â¤¢" frame:CGRectMake(W-70,202,42,42)
+    UIButton *expand=[self button:@"\u2922" frame:CGRectMake(W-70,202,42,42)
                              tint:[UIColor colorWithWhite:.7 alpha:1]];
     [expand addTarget:self action:@selector(centerSelected) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:expand];
@@ -303,13 +303,13 @@
 
     // Map mode row
     UISegmentedControl *mapModes =
-        [[UISegmentedControl alloc] initWithItems:@[@"Ø¹Ø§Ø¯Ù",@"ÙÙØ± ØµÙØ§Ø¹Ù"]];
+        [[UISegmentedControl alloc] initWithItems:@[@"\u0639\u0627\u062F\u064A",@"\u0642\u0645\u0631 \u0635\u0646\u0627\u0639\u064A"]];
     mapModes.frame = CGRectMake(margin,408,inner*0.50-4,42);
     mapModes.selectedSegmentIndex = 0;
     [mapModes addTarget:self action:@selector(mapModeChanged:) forControlEvents:UIControlEventValueChanged];
     [content addSubview:mapModes];
 
-    UIButton *myLocation=[self button:@"â¤  ÙÙÙØ¹Ù"
+    UIButton *myLocation=[self button:@"\u27A4  \u0645\u0648\u0642\u0639\u064A"
                                 frame:CGRectMake(margin+inner*0.50+4,408,inner*0.50-4,42)
                                  tint:cyan];
     [myLocation addTarget:self action:@selector(goMyLocation) forControlEvents:UIControlEventTouchUpInside];
@@ -318,7 +318,7 @@
     // Location switch
     UIView *locCard=[self card:CGRectMake(margin,460,inner,58)];
     [content addSubview:locCard];
-    UILabel *locTitle=[self label:@"â¤  ØªÙØ¹ÙÙ ØªØºÙÙØ± Ø§ÙÙÙÙØ¹"
+    UILabel *locTitle=[self label:@"\u27A4  \u062A\u0641\u0639\u064A\u0644 \u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u0645\u0648\u0642\u0639"
                             frame:CGRectMake(18,8,inner-95,42) size:17 bold:NO];
     [locCard addSubview:locTitle];
     _locationSwitch=[[UISwitch alloc] initWithFrame:CGRectMake(inner-68,13,55,32)];
@@ -333,9 +333,9 @@
     [self refreshCoordinate];
 
     // Route/random/schedule
-    UIButton *route=[self button:@"â  ÙØ³Ø§Ø±" frame:CGRectMake(margin,550,third,50) tint:teal];
-    UIButton *random=[self button:@"â¤¨  Ø¹Ø´ÙØ§Ø¦Ù" frame:CGRectMake(margin+third+gap,550,third,50) tint:purple];
-    UIButton *schedule=[self button:@"â·  Ø§ÙØ¬Ø¯ÙÙØ©" frame:CGRectMake(margin+(third+gap)*2,550,third,50) tint:cyan];
+    UIButton *route=[self button:@"\u2301  \u0645\u0633\u0627\u0631" frame:CGRectMake(margin,550,third,50) tint:teal];
+    UIButton *random=[self button:@"\u2928  \u0639\u0634\u0648\u0627\u0626\u064A" frame:CGRectMake(margin+third+gap,550,third,50) tint:purple];
+    UIButton *schedule=[self button:@"\u25F7  \u0627\u0644\u062C\u062F\u0648\u0644\u0629" frame:CGRectMake(margin+(third+gap)*2,550,third,50) tint:cyan];
     [route addTarget:self action:@selector(routeTapped) forControlEvents:UIControlEventTouchUpInside];
     [random addTarget:self action:@selector(randomTapped) forControlEvents:UIControlEventTouchUpInside];
     [schedule addTarget:self action:@selector(scheduleTapped) forControlEvents:UIControlEventTouchUpInside];
@@ -344,15 +344,15 @@
     // Alternate photo card
     UIView *photoCard=[self card:CGRectMake(margin,612,inner,112)];
     [content addSubview:photoCard];
-    UILabel *photoTitle=[self label:@"ð·  ØµÙØ±Ø© Ø¨Ø¯ÙÙØ©" frame:CGRectMake(16,8,180,38) size:17 bold:NO];
+    UILabel *photoTitle=[self label:@"\U0001F4F7  \u0635\u0648\u0631\u0629 \u0628\u062F\u064A\u0644\u0629" frame:CGRectMake(16,8,180,38) size:17 bold:NO];
     [photoCard addSubview:photoTitle];
     _photoSwitch=[[UISwitch alloc] initWithFrame:CGRectMake(inner-68,12,55,32)];
     [photoCard addSubview:_photoSwitch];
 
     CGFloat pGap=8, pW=(inner-32-pGap*2)/3.0;
-    UIButton *flip=[self button:@"Ø¹ÙØ³" frame:CGRectMake(16,57,pW,38) tint:teal];
-    UIButton *upload=[self button:@"Ø±ÙØ¹" frame:CGRectMake(16+pW+pGap,57,pW,38) tint:orange];
-    UIButton *del=[self button:@"Ø­Ø°Ù" frame:CGRectMake(16+(pW+pGap)*2,57,pW,38) tint:red];
+    UIButton *flip=[self button:@"\u0639\u0643\u0633" frame:CGRectMake(16,57,pW,38) tint:teal];
+    UIButton *upload=[self button:@"\u0631\u0641\u0639" frame:CGRectMake(16+pW+pGap,57,pW,38) tint:orange];
+    UIButton *del=[self button:@"\u062D\u0630\u0641" frame:CGRectMake(16+(pW+pGap)*2,57,pW,38) tint:red];
     [flip addTarget:self action:@selector(notImplemented) forControlEvents:UIControlEventTouchUpInside];
     [upload addTarget:self action:@selector(notImplemented) forControlEvents:UIControlEventTouchUpInside];
     [del addTarget:self action:@selector(notImplemented) forControlEvents:UIControlEventTouchUpInside];
@@ -360,9 +360,9 @@
 
     // Bluetooth / WiFi
     CGFloat half=(inner-gap)/2.0;
-    UIButton *bt=[self button:@"â))) Ø§ÙØ¨ÙÙØªÙØ«" frame:CGRectMake(margin,738,half,50)
+    UIButton *bt=[self button:@"\u25C9))) \u0627\u0644\u0628\u0644\u0648\u062A\u0648\u062B" frame:CGRectMake(margin,738,half,50)
                         tint:[UIColor colorWithRed:.1 green:.58 blue:.9 alpha:1]];
-    UIButton *wifi=[self button:@"â  Ø§ÙÙØ§Ù ÙØ§Ù" frame:CGRectMake(margin+half+gap,738,half,50) tint:cyan];
+    UIButton *wifi=[self button:@"\u2301  \u0627\u0644\u0648\u0627\u064A \u0641\u0627\u064A" frame:CGRectMake(margin+half+gap,738,half,50) tint:cyan];
     [bt addTarget:self action:@selector(bluetoothTapped) forControlEvents:UIControlEventTouchUpInside];
     [wifi addTarget:self action:@selector(wifiTapped) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:bt]; [content addSubview:wifi];
@@ -370,10 +370,10 @@
     // Device card
     UIView *device=[self card:CGRectMake(margin,800,inner,64)];
     [content addSubview:device];
-    UILabel *deviceTitle=[self label:@"ð±  ÙØ¹Ø±Ù Ø§ÙØ¬ÙØ§Ø²" frame:CGRectMake(15,10,145,42) size:16 bold:NO];
+    UILabel *deviceTitle=[self label:@"\U0001F4F1  \u0645\u0639\u0631\u0641 \u0627\u0644\u062C\u0647\u0627\u0632" frame:CGRectMake(15,10,145,42) size:16 bold:NO];
     [device addSubview:deviceTitle];
 
-    NSArray *deviceButtons=@[@"ÙØ³Ø®",@"ØªØ¹Ø¨Ø¦Ø©",@"ÙÙÙØ©",@"Ø§Ø³ØªØ¹Ø§Ø¯Ø©"];
+    NSArray *deviceButtons=@[@"\u0646\u0633\u062E",@"\u062A\u0639\u0628\u0626\u0629",@"\u0647\u0648\u064A\u0629",@"\u0627\u0633\u062A\u0639\u0627\u062F\u0629"];
     NSArray *deviceColors=@[orange,cyan,purple,green];
     CGFloat dW=(inner-170)/4.0;
     for (NSInteger i=0;i<4;i++) {
@@ -386,17 +386,17 @@
     }
 
     // Support / shop
-    UIButton *shop=[self button:@"ð  Ø´Ø±Ø§Ø¡ ÙÙØ¯" frame:CGRectMake(margin,878,half,52) tint:orange];
-    UIButton *chat=[self button:@"â  Ø§ÙØ¯Ø¹Ù Ø§ÙÙÙÙ" frame:CGRectMake(margin+half+gap,878,half,52) tint:cyan];
+    UIButton *shop=[self button:@"\U0001F6D2  \u0634\u0631\u0627\u0621 \u0643\u0648\u062F" frame:CGRectMake(margin,878,half,52) tint:orange];
+    UIButton *chat=[self button:@"\u25CF  \u0627\u0644\u062F\u0639\u0645 \u0627\u0644\u0641\u0646\u064A" frame:CGRectMake(margin+half+gap,878,half,52) tint:cyan];
     [shop addTarget:self action:@selector(showSupport) forControlEvents:UIControlEventTouchUpInside];
     [chat addTarget:self action:@selector(showSupport) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:shop]; [content addSubview:chat];
 
     // Bottom controls
-    UIButton *stop=[self button:@"â¹  Ø¥ÙÙØ§Ù Ø§ÙÙÙ" frame:CGRectMake(margin,944,third,50) tint:red];
-    UIButton *hide=[self button:@"âÌ¸  Ø¥Ø®ÙØ§Ø¡ Ø§ÙØ£Ø¯Ø§Ø©" frame:CGRectMake(margin+third+gap,944,third,50)
+    UIButton *stop=[self button:@"\u23F9  \u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u0643\u0644" frame:CGRectMake(margin,944,third,50) tint:red];
+    UIButton *hide=[self button:@"\u25C9\u0338  \u0625\u062E\u0641\u0627\u0621 \u0627\u0644\u0623\u062F\u0627\u0629" frame:CGRectMake(margin+third+gap,944,third,50)
                            tint:[UIColor colorWithWhite:.65 alpha:1]];
-    UIButton *custom=[self button:@"â·  ØªØ®ØµÙØµ" frame:CGRectMake(margin+(third+gap)*2,944,third,50) tint:cyan];
+    UIButton *custom=[self button:@"\u2637  \u062A\u062E\u0635\u064A\u0635" frame:CGRectMake(margin+(third+gap)*2,944,third,50) tint:cyan];
     [stop addTarget:self action:@selector(stopAll) forControlEvents:UIControlEventTouchUpInside];
     [hide addTarget:self action:@selector(closePanel) forControlEvents:UIControlEventTouchUpInside];
     [custom addTarget:self action:@selector(notImplemented) forControlEvents:UIControlEventTouchUpInside];
@@ -458,7 +458,7 @@
 - (void)goMyLocation {
     CLLocation *loc=_mapView.userLocation.location;
     if (!loc) {
-        [self alert:@"Ø§ÙÙÙÙØ¹ Ø§ÙØ­Ø§ÙÙ ØºÙØ± ÙØªØ§Ø­."];
+        [self alert:@"\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u062D\u0627\u0644\u064A \u063A\u064A\u0631 \u0645\u062A\u0627\u062D."];
         return;
     }
     [self selectCoordinate:loc.coordinate animated:YES];
@@ -480,7 +480,7 @@
         WFUIController *selfRef=weakSelf;
         if (!selfRef) return;
         if (error || !response.mapItems.count) {
-            [selfRef alert:@"ÙÙ ÙØªÙ Ø§ÙØ¹Ø«ÙØ± Ø¹ÙÙ Ø§ÙÙÙÙØ¹."];
+            [selfRef alert:@"\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 \u0627\u0644\u0645\u0648\u0642\u0639."];
             return;
         }
         MKMapItem *item=response.mapItems.firstObject;
@@ -496,7 +496,7 @@
     if (s.isOn) {
         if (!_hasCoordinate) {
             s.on=NO;
-            [self alert:@"Ø­Ø¯Ø¯ ÙÙÙØ¹Ø§Ù Ø£ÙÙØ§Ù."];
+            [self alert:@"\u062D\u062F\u062F \u0645\u0648\u0642\u0639\u0627\u064B \u0623\u0648\u0644\u0627\u064B."];
             return;
         }
 
@@ -505,7 +505,7 @@
                     longitude:_selectedCoordinate.longitude];
         if (![e isSuccess]) {
             s.on=NO;
-            [self alert:e.humanReadableMessage ?: @"ØªØ¹Ø°Ø± ØªÙØ¹ÙÙ Ø§ÙÙÙÙØ¹."];
+            [self alert:e.humanReadableMessage ?: @"\u062A\u0639\u0630\u0631 \u062A\u0641\u0639\u064A\u0644 \u0627\u0644\u0645\u0648\u0642\u0639."];
         }
     } else {
         [[WFAppManager sharedManager] restoreDefaultLocation];
@@ -517,53 +517,53 @@
     WFError *e=[[WFAppManager sharedManager] restoreDefaultLocation];
     _locationSwitch.on=NO;
     [self refreshStatus];
-    [self alert:[e isSuccess] ? @"ØªÙØª Ø§ÙØ§Ø³ØªØ¹Ø§Ø¯Ø© â" :
-     (e.humanReadableMessage ?: @"ØªØ¹Ø°Ø±Øª Ø§ÙØ§Ø³ØªØ¹Ø§Ø¯Ø©.")];
+    [self alert:[e isSuccess] ? @"\u062A\u0645\u062A \u0627\u0644\u0627\u0633\u062A\u0639\u0627\u062F\u0629 \u2705" :
+     (e.humanReadableMessage ?: @"\u062A\u0639\u0630\u0631\u062A \u0627\u0644\u0627\u0633\u062A\u0639\u0627\u062F\u0629.")];
 }
 
 - (void)saveCurrent {
     if (!_hasCoordinate) {
-        [self alert:@"Ø­Ø¯Ø¯ ÙÙÙØ¹Ø§Ù Ø£ÙÙØ§Ù."];
+        [self alert:@"\u062D\u062F\u062F \u0645\u0648\u0642\u0639\u0627\u064B \u0623\u0648\u0644\u0627\u064B."];
         return;
     }
     WFError *e=[[WFLocationService sharedService]
                 addFavoriteWithName:@"WolFox Location"
                 latitude:_selectedCoordinate.latitude
                 longitude:_selectedCoordinate.longitude];
-    [self alert:[e isSuccess] ? @"ØªÙ Ø­ÙØ¸ Ø§ÙÙÙÙØ¹ â" :
-     (e.humanReadableMessage ?: @"ØªØ¹Ø°Ø± Ø§ÙØ­ÙØ¸.")];
+    [self alert:[e isSuccess] ? @"\u062A\u0645 \u062D\u0641\u0638 \u0627\u0644\u0645\u0648\u0642\u0639 \u2705" :
+     (e.humanReadableMessage ?: @"\u062A\u0639\u0630\u0631 \u0627\u0644\u062D\u0641\u0638.")];
 }
 
 - (void)showSaved {
     NSArray *items=[[WFLocationService sharedService] favorites];
-    [self alert:[NSString stringWithFormat:@"Ø¹Ø¯Ø¯ Ø§ÙÙÙØ§ÙØ¹ Ø§ÙÙØ­ÙÙØ¸Ø©: %lu",
+    [self alert:[NSString stringWithFormat:@"\u0639\u062F\u062F \u0627\u0644\u0645\u0648\u0627\u0642\u0639 \u0627\u0644\u0645\u062D\u0641\u0648\u0638\u0629: %lu",
                  (unsigned long)items.count]];
 }
 
 - (void)routeTapped {
-    [self alert:@"ÙØ§Ø¬ÙØ© Ø§ÙÙØ³Ø§Ø± Ø¬Ø§ÙØ²Ø© ÙÙØªÙØµÙÙ Ø¨ÙØ­Ø±Ù Route ÙÙ WolFox."];
+    [self alert:@"\u0648\u0627\u062C\u0647\u0629 \u0627\u0644\u0645\u0633\u0627\u0631 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0648\u0635\u064A\u0644 \u0628\u0645\u062D\u0631\u0643 Route \u0641\u064A WolFox."];
 }
 
 - (void)randomTapped {
     WFError *e=[[WFAppManager sharedManager] startRandomMovementWithRadius:100.0];
-    [self alert:[e isSuccess] ? @"ØªÙ ØªØ´ØºÙÙ Ø§ÙÙØ¶Ø¹ Ø§ÙØ¹Ø´ÙØ§Ø¦Ù ÙÙ WolFox Runtime â" :
-     (e.humanReadableMessage ?: @"ØªØ¹Ø°Ø± Ø§ÙØªØ´ØºÙÙ.")];
+    [self alert:[e isSuccess] ? @"\u062A\u0645 \u062A\u0634\u063A\u064A\u0644 \u0627\u0644\u0648\u0636\u0639 \u0627\u0644\u0639\u0634\u0648\u0627\u0626\u064A \u0641\u064A WolFox Runtime \u2705" :
+     (e.humanReadableMessage ?: @"\u062A\u0639\u0630\u0631 \u0627\u0644\u062A\u0634\u063A\u064A\u0644.")];
     [self refreshStatus];
 }
 
 - (void)scheduleTapped {
     WFError *e=[[WFAppManager sharedManager] startScheduler];
-    [self alert:[e isSuccess] ? @"ØªÙ ØªØ´ØºÙÙ Scheduler ÙÙ WolFox Runtime â" :
-     (e.humanReadableMessage ?: @"ØªØ¹Ø°Ø± Ø§ÙØªØ´ØºÙÙ.")];
+    [self alert:[e isSuccess] ? @"\u062A\u0645 \u062A\u0634\u063A\u064A\u0644 Scheduler \u0641\u064A WolFox Runtime \u2705" :
+     (e.humanReadableMessage ?: @"\u062A\u0639\u0630\u0631 \u0627\u0644\u062A\u0634\u063A\u064A\u0644.")];
     [self refreshStatus];
 }
 
 - (void)wifiTapped {
-    [self alert:@"ÙØ§Ø¬ÙØ© Wi-Fi Ø¬Ø§ÙØ²Ø©. ÙÙØ²Ù Ø§Ø®ØªÙØ§Ø± Profile ID ÙØ±Ø¨Ø·ÙØ§ Ø¨Ø§ÙÙ Core."];
+    [self alert:@"\u0648\u0627\u062C\u0647\u0629 Wi-Fi \u062C\u0627\u0647\u0632\u0629. \u064A\u0644\u0632\u0645 \u0627\u062E\u062A\u064A\u0627\u0631 Profile ID \u0644\u0631\u0628\u0637\u0647\u0627 \u0628\u0627\u0644\u0640 Core."];
 }
 
 - (void)bluetoothTapped {
-    [self alert:@"Bluetooth UI ÙÙØ· ÙÙ ÙØ°Ù Ø§ÙÙØ³Ø®Ø©."];
+    [self alert:@"Bluetooth UI \u0641\u0642\u0637 \u0641\u064A \u0647\u0630\u0647 \u0627\u0644\u0646\u0633\u062E\u0629."];
 }
 
 - (void)deviceAction:(UIButton *)sender {
@@ -571,7 +571,7 @@
         WFError *e=[[WFAppManager sharedManager] setActiveDeviceProfileWithID:@""];
         (void)e;
     }
-    [self alert:@"Device Profile UI Ø¬Ø§ÙØ²Ø© ÙÙØªÙØµÙÙ Ø¨Ø§ÙØ¨ÙØ§ÙØ§Øª Ø§ÙÙØ¹ÙÙØ©."];
+    [self alert:@"Device Profile UI \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0648\u0635\u064A\u0644 \u0628\u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0641\u0639\u0644\u064A\u0629."];
 }
 
 - (void)stopAll {
@@ -579,7 +579,7 @@
     [[WFAppManager sharedManager] restoreDefaultLocation];
     _locationSwitch.on=NO;
     [self refreshStatus];
-    [self alert:@"ØªÙ Ø¥ÙÙØ§Ù Ø­Ø§ÙØ© WolFox Runtime Ø§ÙØ­Ø§ÙÙØ©."];
+    [self alert:@"\u062A\u0645 \u0625\u064A\u0642\u0627\u0641 \u062D\u0627\u0644\u0629 WolFox Runtime \u0627\u0644\u062D\u0627\u0644\u064A\u0629."];
 }
 
 - (void)refreshStatus {
@@ -607,7 +607,7 @@
 }
 
 - (void)notImplemented {
-    [self alert:@"ÙØ°Ù Ø§ÙÙØ§Ø¬ÙØ© ÙÙØ¬ÙØ¯Ø©Ø ÙÙÙ Ø§ÙÙØ¸ÙÙØ© ØºÙØ± ÙÙØµÙÙØ© Ø¨Ø§ÙÙ Core Ø§ÙØ­Ø§ÙÙ Ø¨Ø¹Ø¯."];
+    [self alert:@"\u0647\u0630\u0647 \u0627\u0644\u0648\u0627\u062C\u0647\u0629 \u0645\u0648\u062C\u0648\u062F\u0629\u060C \u0644\u0643\u0646 \u0627\u0644\u0648\u0638\u064A\u0641\u0629 \u063A\u064A\u0631 \u0645\u0648\u0635\u0648\u0644\u0629 \u0628\u0627\u0644\u0640 Core \u0627\u0644\u062D\u0627\u0644\u064A \u0628\u0639\u062F."];
 }
 
 - (void)alert:(NSString *)message {
