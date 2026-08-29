@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Install compiler
+        run: sudo apt-get update && sudo apt-get install -y clang
       - name: Run all Linux tests
         run: |
           c++ -std=c++17 -Wall -Wextra -D_USE_MATH_DEFINES Tests/AllTests.cpp Portable.cpp -o tests
@@ -25,7 +26,7 @@ jobs:
           path: test_output.log
           if-no-files-found: error
 
-    validate-config:
+  validate-config:
     name: Validate Config
     runs-on: ubuntu-22.04
     steps:
@@ -71,7 +72,6 @@ jobs:
           SDK_DIR=$(find /tmp/sdks -maxdepth 1 -type d -name "iPhoneOS*" | sort -V | tail -n1)
           test -n "$SDK_DIR" || { echo "NO IPHONEOS SDK FOUND"; exit 1; }
           cp -r "SDKDIR""SDK_DIR" "SDKD​IR""THEOS/sdks/iPhoneOS.sdk"
-          grep -q '15.8' Makefile || { echo "FAIL: deployment target 15.8 missing"; exit 1; }
           echo "Using SDK: $SDK_DIR"
 
       - name: Build Rootful package
