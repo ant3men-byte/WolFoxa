@@ -1,5 +1,6 @@
 #import "WolFox.h"
 #import "UI.h"
+#import "Audit.h"
 
 #import <UIKit/UIKit.h>
 #import <MapKit/MapKit.h>
@@ -215,7 +216,7 @@
     panel.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.08].CGColor;
     panel.showsVerticalScrollIndicator = NO;
 
-    UIView *content = [[UIView alloc] initWithFrame:CGRectMake(0,0,pw,1090)];
+    UIView *content = [[UIView alloc] initWithFrame:CGRectMake(0,0,pw,1125)];
     [panel addSubview:content];
     panel.contentSize = content.bounds.size;
 
@@ -406,7 +407,12 @@
     [custom addTarget:self action:@selector(notImplemented) forControlEvents:UIControlEventTouchUpInside];
     [content addSubview:stop]; [content addSubview:hide]; [content addSubview:custom];
 
-    _statusLabel=[self label:@"DEFAULT" frame:CGRectMake(margin,1020,inner,20) size:11 bold:NO];
+    UIButton *logs=[self button:@"Logs" frame:CGRectMake(margin,1018,inner,46)
+                           tint:[UIColor colorWithRed:.42 green:.46 blue:.52 alpha:1]];
+    [logs addTarget:self action:@selector(showAuditLogs) forControlEvents:UIControlEventTouchUpInside];
+    [content addSubview:logs];
+
+    _statusLabel=[self label:@"DEFAULT" frame:CGRectMake(margin,1074,inner,20) size:11 bold:NO];
     _statusLabel.textAlignment=NSTextAlignmentCenter;
     _statusLabel.textColor=[UIColor colorWithWhite:1 alpha:.45];
     [content addSubview:_statusLabel];
@@ -591,6 +597,23 @@
     BOOL active=[s[@"locationEnabled"] boolValue];
     if (_statusLabel) _statusLabel.text=active ? @"LOCATION ACTIVE" : @"DEFAULT";
     if (_locationSwitch) _locationSwitch.on=active;
+}
+
+
+#pragma mark - Audit Logs
+
+- (void)showAuditLogs {
+    WFAuditLogNSString(
+        @"UI",
+        @"Logs viewer requested"
+    );
+
+    UIViewController *vc = _overlayWindow.rootViewController;
+    while (vc.presentedViewController) {
+        vc = vc.presentedViewController;
+    }
+
+    WFAuditPresentLogs(vc);
 }
 
 #pragma mark - Informational
