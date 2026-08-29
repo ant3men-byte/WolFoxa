@@ -1,0 +1,9 @@
+Package: com.wolfox.wolfox
+Name: WolFox
+Version: 0.3.0
+Architecture: iphoneos-arm
+Description: Authorized iOS environment simulation and testing platform.
+Maintainer: WolFox Engineering
+Author: WolFox Engineering
+Section: Testing
+Depends: mobilesubstrate
