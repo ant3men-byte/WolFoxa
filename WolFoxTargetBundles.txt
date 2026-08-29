@@ -1,0 +1,2 @@
+# One bundle ID per line. WolFox injects ONLY into these. Never use wildcards.
+com.example.authorizedTargetApp
