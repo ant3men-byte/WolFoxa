@@ -6,11 +6,13 @@
 #import <UIKit/UIKit.h>
 #import <CoreLocation/CoreLocation.h>
 #import <MapKit/MapKit.h>
+#import <objc/runtime.h>
 
 
 #pragma mark - Constants
 
-static NSString * const kSchemaLocation = @"wolfox.location/1";
+static NSString * const kSchemaLocation =
+    @"wolfox.location/1";
 
 NSString * const WFEventLocationChanged =
     @"wolfox.location.changed";
@@ -25,6 +27,132 @@ NSString * const WFEventErrorOccurred =
     @"wolfox.error.occurred";
 
 
+#pragma mark - Runtime Hooks (CLLocationManager)
+
+static CLLocation *(*orig_location)(id, SEL) = NULL;
+
+
+static CLLocation *WolFox_hooked_location(
+    id self,
+    SEL _cmd
+) {
+
+    @autoreleasepool {
+
+        WFRuntimeState *state =
+            [WFRuntimeState sharedState];
+
+        if (state.locationEnabled) {
+
+            CLLocationCoordinate2D coordinate =
+                CLLocationCoordinate2DMake(
+                    state.currentLatitude,
+                    state.currentLongitude
+                );
+
+            CLLocationDirection course =
+                -1.0;
+
+            CLLocationSpeed speed =
+                0.0;
+
+            if (state.movementActive) {
+
+                course =
+                    state.movementCourse;
+
+                speed =
+                    state.movementSpeed;
+            }
+
+            CLLocation *location =
+                [[CLLocation alloc]
+                    initWithCoordinate:coordinate
+                    altitude:0.0
+                    horizontalAccuracy:5.0
+                    verticalAccuracy:5.0
+                    course:course
+                    speed:speed
+                    timestamp:[NSDate date]];
+
+            return location;
+        }
+
+        if (orig_location != NULL) {
+
+            return
+                orig_location(
+                    self,
+                    _cmd
+                );
+        }
+
+        return nil;
+    }
+}
+
+
+static void WolFoxInstallRuntimeHooks(void) {
+
+    static dispatch_once_t onceToken;
+
+    dispatch_once(&onceToken, ^{
+
+        Class managerClass =
+            objc_getClass(
+                "CLLocationManager"
+            );
+
+        if (managerClass == Nil) {
+
+            [[WFLogger sharedLogger]
+                logCategory:WFLogLocation
+                message:
+                    @"CLLocationManager class not found"];
+
+            return;
+        }
+
+        SEL locationSelector =
+            @selector(location);
+
+        Method locationMethod =
+            class_getInstanceMethod(
+                managerClass,
+                locationSelector
+            );
+
+        if (locationMethod == NULL) {
+
+            [[WFLogger sharedLogger]
+                logCategory:WFLogLocation
+                message:
+                    @"CLLocationManager.location not found"];
+
+            return;
+        }
+
+        IMP previousImplementation =
+            method_setImplementation(
+                locationMethod,
+                (IMP)WolFox_hooked_location
+            );
+
+        if (previousImplementation != NULL) {
+
+            orig_location =
+                (CLLocation *(*)(id, SEL))
+                previousImplementation;
+        }
+
+        [[WFLogger sharedLogger]
+            logCategory:WFLogLocation
+            message:
+                @"CLLocationManager.location hook installed"];
+    });
+}
+
+
 #pragma mark - WFLogger
 
 @implementation WFLogger {
@@ -32,21 +160,26 @@ NSString * const WFEventErrorOccurred =
     NSMutableArray<NSString *> *_buffer;
 }
 
+
 + (instancetype)sharedLogger {
 
     static WFLogger *instance = nil;
     static dispatch_once_t onceToken;
 
     dispatch_once(&onceToken, ^{
-        instance = [[WFLogger alloc] init];
+
+        instance =
+            [[WFLogger alloc] init];
     });
 
     return instance;
 }
 
+
 - (instancetype)init {
 
-    self = [super init];
+    self =
+        [super init];
 
     if (self) {
 
@@ -63,29 +196,47 @@ NSString * const WFEventErrorOccurred =
     return self;
 }
 
-- (void)logCategory:(WFLogCategory)category
-            message:(NSString *)message {
+
+- (void)logCategory:
+    (WFLogCategory)category
+            message:
+    (NSString *)message {
 
     NSString *line =
-        [NSString stringWithFormat:
-            @"%@ [%@] %@",
-            [NSDate date],
-            [self categoryName:category],
-            message ?: @""];
+        [NSString
+            stringWithFormat:
+                @"%@ [%@] %@",
+                [NSDate date],
+                [self
+                    categoryName:
+                        category],
+                message ?: @""];
 
-    dispatch_async(_logQueue, ^{
+    dispatch_async(
+        _logQueue,
+        ^{
 
-        [self->_buffer addObject:line];
+        [self->_buffer
+            addObject:line];
 
-        if (self->_buffer.count > 500) {
-            [self->_buffer removeObjectAtIndex:0];
+        if (self->_buffer.count >
+            500) {
+
+            [self->_buffer
+                removeObjectAtIndex:
+                    0];
         }
 
-        NSLog(@"WolFox %@", line);
+        NSLog(
+            @"WolFox %@",
+            line
+        );
     });
 }
 
-- (NSString *)categoryName:(WFLogCategory)category {
+
+- (NSString *)categoryName:
+    (WFLogCategory)category {
 
     switch (category) {
 
@@ -137,21 +288,26 @@ NSString * const WFEventErrorOccurred =
     > *_handlers;
 }
 
+
 + (instancetype)sharedBus {
 
     static WFEventBus *instance = nil;
     static dispatch_once_t onceToken;
 
     dispatch_once(&onceToken, ^{
-        instance = [[WFEventBus alloc] init];
+
+        instance =
+            [[WFEventBus alloc] init];
     });
 
     return instance;
 }
 
+
 - (instancetype)init {
 
-    self = [super init];
+    self =
+        [super init];
 
     if (self) {
 
@@ -162,15 +318,20 @@ NSString * const WFEventErrorOccurred =
             );
 
         _handlers =
-            [NSMutableDictionary dictionary];
+            [NSMutableDictionary
+                dictionary];
     }
 
     return self;
 }
 
-- (void)subscribe:(NSString *)eventName
-         observer:(id)observer
-            block:(void (^)(NSDictionary *payload))block {
+
+- (void)subscribe:
+    (NSString *)eventName
+         observer:
+    (id)observer
+            block:
+    (void (^)(NSDictionary *payload))block {
 
     if (eventName.length == 0 ||
         observer == nil ||
@@ -179,10 +340,14 @@ NSString * const WFEventErrorOccurred =
         return;
     }
 
-    dispatch_sync(_busQueue, ^{
+    dispatch_sync(
+        _busQueue,
+        ^{
 
         NSMapTable *table =
-            self->_handlers[eventName];
+            self->_handlers[
+                eventName
+            ];
 
         if (table == nil) {
 
@@ -190,39 +355,55 @@ NSString * const WFEventErrorOccurred =
                 [NSMapTable
                     weakToStrongObjectsMapTable];
 
-            self->_handlers[eventName] =
-                table;
+            self->_handlers[
+                eventName
+            ] = table;
         }
 
         [table
-            setObject:[block copy]
-               forKey:observer];
+            setObject:
+                [block copy]
+            forKey:
+                observer];
     });
 }
 
-- (void)unsubscribe:(id)observer {
+
+- (void)unsubscribe:
+    (id)observer {
 
     if (observer == nil) {
         return;
     }
 
-    dispatch_sync(_busQueue, ^{
+    dispatch_sync(
+        _busQueue,
+        ^{
 
         NSArray *keys =
-            [self->_handlers.allKeys copy];
+            [self->_handlers
+                .allKeys copy];
 
-        for (NSString *eventName in keys) {
+        for (NSString *eventName
+             in keys) {
 
             NSMapTable *table =
-                self->_handlers[eventName];
+                self->_handlers[
+                    eventName
+                ];
 
-            [table removeObjectForKey:observer];
+            [table
+                removeObjectForKey:
+                    observer];
         }
     });
 }
 
-- (void)publish:(NSString *)eventName
-        payload:(NSDictionary *)payload {
+
+- (void)publish:
+    (NSString *)eventName
+        payload:
+    (NSDictionary *)payload {
 
     if (eventName.length == 0) {
         return;
@@ -231,10 +412,14 @@ NSString * const WFEventErrorOccurred =
     __block NSArray *blocks =
         nil;
 
-    dispatch_sync(_busQueue, ^{
+    dispatch_sync(
+        _busQueue,
+        ^{
 
         NSMapTable *table =
-            self->_handlers[eventName];
+            self->_handlers[
+                eventName
+            ];
 
         if (table == nil) {
 
@@ -246,15 +431,23 @@ NSString * const WFEventErrorOccurred =
             [NSMutableArray array];
 
         NSEnumerator *enumerator =
-            [table objectEnumerator];
+            [table
+                objectEnumerator];
 
-        id blockObject = nil;
+        id blockObject =
+            nil;
 
-        while ((blockObject =
-                    [enumerator nextObject])) {
+        while (
+            (
+                blockObject =
+                    [enumerator
+                        nextObject]
+            )
+        ) {
 
             [snapshot
-                addObject:blockObject];
+                addObject:
+                    blockObject];
         }
 
         blocks =
@@ -264,13 +457,17 @@ NSString * const WFEventErrorOccurred =
     NSDictionary *safePayload =
         payload ?: @{};
 
-    for (id blockObject in blocks) {
+    for (id blockObject
+         in blocks) {
 
         void (^block)(NSDictionary *) =
             blockObject;
 
-        if (block) {
-            block(safePayload);
+        if (block != nil) {
+
+            block(
+                safePayload
+            );
         }
     }
 }
@@ -283,64 +480,144 @@ NSString * const WFEventErrorOccurred =
 @interface WFRuntimeState ()
 <WFRuntimeStateMutable>
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 BOOL locationEnabled;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double currentLatitude;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double currentLongitude;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 WFLocationMode locationMode;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 BOOL movementActive;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 BOOL movementPaused;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double movementSpeed;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double movementCourse;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 BOOL randomMovementActive;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double randomRadius;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 BOOL routeActive;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 BOOL routePaused;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double routeProgress;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double routeDistanceRemaining;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double routeSpeed;
 
-@property (nonatomic, copy, readwrite)
+@property (
+    nonatomic,
+    copy,
+    readwrite
+)
 NSString *activeWiFiProfileID;
 
-@property (nonatomic, copy, readwrite)
+@property (
+    nonatomic,
+    copy,
+    readwrite
+)
 NSString *activeDeviceProfileID;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 BOOL schedulerActive;
 
-@property (nonatomic, copy, readwrite)
+@property (
+    nonatomic,
+    copy,
+    readwrite
+)
 NSString *lastAction;
 
-@property (nonatomic, copy, readwrite)
+@property (
+    nonatomic,
+    copy,
+    readwrite
+)
 NSString *lastError;
 
 @end
@@ -350,22 +627,29 @@ NSString *lastError;
     dispatch_queue_t _stateQueue;
 }
 
+
 + (instancetype)sharedState {
 
-    static WFRuntimeState *instance = nil;
+    static WFRuntimeState *instance =
+        nil;
+
     static dispatch_once_t onceToken;
 
     dispatch_once(&onceToken, ^{
+
         instance =
-            [[WFRuntimeState alloc] init];
+            [[WFRuntimeState alloc]
+                init];
     });
 
     return instance;
 }
 
+
 - (instancetype)init {
 
-    self = [super init];
+    self =
+        [super init];
 
     if (self) {
 
@@ -375,32 +659,59 @@ NSString *lastError;
                 DISPATCH_QUEUE_SERIAL
             );
 
-        _locationEnabled = NO;
+        _locationEnabled =
+            NO;
 
-        _currentLatitude = 0.0;
-        _currentLongitude = 0.0;
+        _currentLatitude =
+            0.0;
+
+        _currentLongitude =
+            0.0;
 
         _locationMode =
             WFLocationModeDefault;
 
-        _movementActive = NO;
-        _movementPaused = NO;
-        _movementSpeed = 0.0;
-        _movementCourse = 0.0;
+        _movementActive =
+            NO;
 
-        _randomMovementActive = NO;
-        _randomRadius = 0.0;
+        _movementPaused =
+            NO;
 
-        _routeActive = NO;
-        _routePaused = NO;
-        _routeProgress = 0.0;
-        _routeDistanceRemaining = 0.0;
-        _routeSpeed = 0.0;
+        _movementSpeed =
+            0.0;
 
-        _activeWiFiProfileID = @"";
-        _activeDeviceProfileID = @"";
+        _movementCourse =
+            0.0;
 
-        _schedulerActive = NO;
+        _randomMovementActive =
+            NO;
+
+        _randomRadius =
+            0.0;
+
+        _routeActive =
+            NO;
+
+        _routePaused =
+            NO;
+
+        _routeProgress =
+            0.0;
+
+        _routeDistanceRemaining =
+            0.0;
+
+        _routeSpeed =
+            0.0;
+
+        _activeWiFiProfileID =
+            @"";
+
+        _activeDeviceProfileID =
+            @"";
+
+        _schedulerActive =
+            NO;
 
         _lastAction =
             @"Initialized";
@@ -412,17 +723,22 @@ NSString *lastError;
     return self;
 }
 
+
 - (void)performUpdate:
-    (void (^)(id<WFRuntimeStateMutable> state))updateBlock {
+    (void (^)(id<WFRuntimeStateMutable> state))
+    updateBlock {
 
     if (updateBlock == nil) {
         return;
     }
 
-    dispatch_sync(_stateQueue, ^{
+    dispatch_sync(
+        _stateQueue,
+        ^{
 
         updateBlock(
-            (id<WFRuntimeStateMutable>)self
+            (id<WFRuntimeStateMutable>)
+            self
         );
     });
 
@@ -430,16 +746,21 @@ NSString *lastError;
         [self snapshotForUI];
 
     [[WFEventBus sharedBus]
-        publish:WFEventRuntimeStateChanged
-        payload:snapshot];
+        publish:
+            WFEventRuntimeStateChanged
+        payload:
+            snapshot];
 }
+
 
 - (NSDictionary *)snapshotForUI {
 
     __block NSDictionary *snapshot =
         nil;
 
-    dispatch_sync(_stateQueue, ^{
+    dispatch_sync(
+        _stateQueue,
+        ^{
 
         snapshot = @{
 
@@ -483,16 +804,21 @@ NSString *lastError;
                 @(self.routeProgress),
 
             @"routeDistanceRemaining":
-                @(self.routeDistanceRemaining),
+                @(
+                    self
+                    .routeDistanceRemaining
+                ),
 
             @"routeSpeed":
                 @(self.routeSpeed),
 
             @"activeWiFiProfileID":
-                self.activeWiFiProfileID ?: @"",
+                self.activeWiFiProfileID
+                ?: @"",
 
             @"activeDeviceProfileID":
-                self.activeDeviceProfileID ?: @"",
+                self.activeDeviceProfileID
+                ?: @"",
 
             @"schedulerActive":
                 @(self.schedulerActive),
@@ -508,10 +834,15 @@ NSString *lastError;
     return snapshot ?: @{};
 }
 
+
 - (void)resetToDefaultEnvironment {
 
-    [self performUpdate:
-        ^(id<WFRuntimeStateMutable> state) {
+    [self
+        performUpdate:
+            ^(
+                id<WFRuntimeStateMutable>
+                state
+            ) {
 
         state.locationEnabled =
             NO;
@@ -582,19 +913,32 @@ NSString *lastError;
 
 @interface WFError ()
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 WFErrorCode errorCode;
 
-@property (nonatomic, copy, readwrite)
+@property (
+    nonatomic,
+    copy,
+    readwrite
+)
 NSString *humanReadableMessage;
 
-@property (nonatomic, copy, readwrite)
+@property (
+    nonatomic,
+    copy,
+    readwrite
+)
 NSString *technicalMessage;
 
 @end
 
 
 @implementation WFError
+
 
 + (instancetype)success {
 
@@ -613,6 +957,7 @@ NSString *technicalMessage;
     return error;
 }
 
+
 + (instancetype)errorWithCode:
     (WFErrorCode)code
                     technical:
@@ -625,13 +970,16 @@ NSString *technicalMessage;
         code;
 
     error.humanReadableMessage =
-        [self userMessageForCode:code];
+        [self
+            userMessageForCode:
+                code];
 
     error.technicalMessage =
         technicalMessage ?: @"";
 
     return error;
 }
+
 
 + (NSString *)userMessageForCode:
     (WFErrorCode)code {
@@ -666,6 +1014,7 @@ NSString *technicalMessage;
     return @"Unknown error.";
 }
 
+
 - (BOOL)isSuccess {
 
     return
@@ -680,27 +1029,37 @@ NSString *technicalMessage;
 
 @implementation WFSettingsStore
 
+
 + (instancetype)sharedStore {
 
-    static WFSettingsStore *instance = nil;
+    static WFSettingsStore *instance =
+        nil;
+
     static dispatch_once_t onceToken;
 
     dispatch_once(&onceToken, ^{
+
         instance =
-            [[WFSettingsStore alloc] init];
+            [[WFSettingsStore alloc]
+                init];
     });
 
     return instance;
 }
 
+
 - (NSUserDefaults *)defaults {
 
     return
-        [NSUserDefaults standardUserDefaults];
+        [NSUserDefaults
+            standardUserDefaults];
 }
 
-- (void)setObjectForKey:(NSString *)key
-                  value:(id)value {
+
+- (void)setObjectForKey:
+    (NSString *)key
+                  value:
+    (id)value {
 
     if (key.length == 0) {
         return;
@@ -710,7 +1069,7 @@ NSString *technicalMessage;
 
         [[self defaults]
             setObject:value
-               forKey:key];
+            forKey:key];
 
     } else {
 
@@ -719,7 +1078,9 @@ NSString *technicalMessage;
     }
 }
 
-- (id)objectForKey:(NSString *)key {
+
+- (id)objectForKey:
+    (NSString *)key {
 
     if (key.length == 0) {
         return nil;
@@ -730,19 +1091,24 @@ NSString *technicalMessage;
             objectForKey:key];
 }
 
-- (void)setStringForKey:(NSString *)key
-                  value:(NSString *)value {
+
+- (void)setStringForKey:
+    (NSString *)key
+                  value:
+    (NSString *)value {
 
     [self
         setObjectForKey:key
         value:value];
 }
 
+
 - (NSString *)stringForKey:
     (NSString *)key {
 
     id value =
-        [self objectForKey:key];
+        [self
+            objectForKey:key];
 
     if ([value
             isKindOfClass:
@@ -754,8 +1120,11 @@ NSString *technicalMessage;
     return nil;
 }
 
-- (void)setDoubleForKey:(NSString *)key
-                  value:(double)value {
+
+- (void)setDoubleForKey:
+    (NSString *)key
+                  value:
+    (double)value {
 
     if (key.length == 0) {
         return;
@@ -763,10 +1132,12 @@ NSString *technicalMessage;
 
     [[self defaults]
         setDouble:value
-           forKey:key];
+        forKey:key];
 }
 
-- (double)doubleForKey:(NSString *)key {
+
+- (double)doubleForKey:
+    (NSString *)key {
 
     if (key.length == 0) {
         return 0.0;
@@ -777,8 +1148,11 @@ NSString *technicalMessage;
             doubleForKey:key];
 }
 
-- (void)setBoolForKey:(NSString *)key
-                value:(BOOL)value {
+
+- (void)setBoolForKey:
+    (NSString *)key
+                value:
+    (BOOL)value {
 
     if (key.length == 0) {
         return;
@@ -786,10 +1160,12 @@ NSString *technicalMessage;
 
     [[self defaults]
         setBool:value
-          forKey:key];
+        forKey:key];
 }
 
-- (BOOL)boolForKey:(NSString *)key {
+
+- (BOOL)boolForKey:
+    (NSString *)key {
 
     if (key.length == 0) {
         return NO;
@@ -800,18 +1176,24 @@ NSString *technicalMessage;
             boolForKey:key];
 }
 
-- (void)setArrayForKey:(NSString *)key
-                 value:(NSArray *)value {
+
+- (void)setArrayForKey:
+    (NSString *)key
+                 value:
+    (NSArray *)value {
 
     [self
         setObjectForKey:key
         value:value];
 }
 
-- (NSArray *)arrayForKey:(NSString *)key {
+
+- (NSArray *)arrayForKey:
+    (NSString *)key {
 
     id value =
-        [self objectForKey:key];
+        [self
+            objectForKey:key];
 
     if ([value
             isKindOfClass:
@@ -823,6 +1205,7 @@ NSString *technicalMessage;
     return nil;
 }
 
+
 - (void)setDictionaryForKey:
     (NSString *)key
                       value:
@@ -833,11 +1216,13 @@ NSString *technicalMessage;
         value:value];
 }
 
+
 - (NSDictionary *)dictionaryForKey:
     (NSString *)key {
 
     id value =
-        [self objectForKey:key];
+        [self
+            objectForKey:key];
 
     if ([value
             isKindOfClass:
@@ -849,7 +1234,9 @@ NSString *technicalMessage;
     return nil;
 }
 
-- (void)removeKey:(NSString *)key {
+
+- (void)removeKey:
+    (NSString *)key {
 
     if (key.length == 0) {
         return;
@@ -867,8 +1254,10 @@ NSString *technicalMessage;
 @implementation WFLocationModel {
     NSString *_locationID;
     NSString *_name;
+
     double _latitude;
     double _longitude;
+
     NSDate *_createdAt;
 }
 
@@ -887,6 +1276,7 @@ NSString *technicalMessage;
 @synthesize createdAt =
     _createdAt;
 
+
 + (instancetype)locationWithName:
     (NSString *)name
                         latitude:
@@ -895,10 +1285,12 @@ NSString *technicalMessage;
     (double)longitude {
 
     WFLocationModel *location =
-        [[WFLocationModel alloc] init];
+        [[WFLocationModel alloc]
+            init];
 
     location->_locationID =
-        [[NSUUID UUID] UUIDString];
+        [[NSUUID UUID]
+            UUIDString];
 
     location->_name =
         [name copy] ?: @"Unnamed";
@@ -915,6 +1307,7 @@ NSString *technicalMessage;
     return location;
 }
 
+
 - (BOOL)coordinateIsValid {
 
     return
@@ -923,6 +1316,7 @@ NSString *technicalMessage;
         _longitude >= -180.0 &&
         _longitude <= 180.0;
 }
+
 
 - (NSDictionary *)toDictionary {
 
@@ -950,6 +1344,7 @@ NSString *technicalMessage;
             )
     };
 }
+
 
 + (instancetype)fromDictionary:
     (NSDictionary *)dict {
@@ -1009,7 +1404,8 @@ NSString *technicalMessage;
     }
 
     WFLocationModel *location =
-        [[WFLocationModel alloc] init];
+        [[WFLocationModel alloc]
+            init];
 
     NSString *locationID =
         dict[@"id"];
@@ -1031,7 +1427,8 @@ NSString *technicalMessage;
     } else {
 
         location->_locationID =
-            [[NSUUID UUID] UUIDString];
+            [[NSUUID UUID]
+                UUIDString];
     }
 
     if ([name
@@ -1061,7 +1458,8 @@ NSString *technicalMessage;
         location->_createdAt =
             [NSDate
                 dateWithTimeIntervalSince1970:
-                    [created doubleValue]];
+                    [created
+                        doubleValue]];
 
     } else {
 
@@ -1089,18 +1487,24 @@ static NSString * const kLastLonKey =
 
 @implementation WFLocationService
 
+
 + (instancetype)sharedService {
 
-    static WFLocationService *instance = nil;
+    static WFLocationService *instance =
+        nil;
+
     static dispatch_once_t onceToken;
 
     dispatch_once(&onceToken, ^{
+
         instance =
-            [[WFLocationService alloc] init];
+            [[WFLocationService alloc]
+                init];
     });
 
     return instance;
 }
+
 
 - (WFError *)setLocationWithLatitude:
     (double)latitude
@@ -1122,7 +1526,10 @@ static NSString * const kLastLonKey =
 
     [[WFRuntimeState sharedState]
         performUpdate:
-            ^(id<WFRuntimeStateMutable> state) {
+            ^(
+                id<WFRuntimeStateMutable>
+                state
+            ) {
 
         state.locationEnabled =
             YES;
@@ -1144,34 +1551,44 @@ static NSString * const kLastLonKey =
     }];
 
     [[WFSettingsStore sharedStore]
-        setDoubleForKey:kLastLatKey
-                  value:latitude];
+        setDoubleForKey:
+            kLastLatKey
+        value:
+            latitude];
 
     [[WFSettingsStore sharedStore]
-        setDoubleForKey:kLastLonKey
-                  value:longitude];
+        setDoubleForKey:
+            kLastLonKey
+        value:
+            longitude];
 
     [[WFEventBus sharedBus]
-        publish:WFEventLocationChanged
+        publish:
+            WFEventLocationChanged
         payload:@{
             @"lat": @(latitude),
             @"lon": @(longitude)
         }];
 
-    return [WFError success];
+    return
+        [WFError success];
 }
+
 
 - (BOOL)isLocationActive {
 
     return
-        [WFRuntimeState sharedState]
-            .locationEnabled;
+        [WFRuntimeState
+            sharedState]
+        .locationEnabled;
 }
+
 
 - (NSDictionary *)currentLocation {
 
     WFRuntimeState *state =
-        [WFRuntimeState sharedState];
+        [WFRuntimeState
+            sharedState];
 
     if (!state.locationEnabled) {
         return nil;
@@ -1186,17 +1603,22 @@ static NSString * const kLastLonKey =
     };
 }
 
+
 - (WFError *)clearLocation {
 
     return
         [self restoreDefault];
 }
 
+
 - (WFError *)restoreDefault {
 
     [[WFRuntimeState sharedState]
         performUpdate:
-            ^(id<WFRuntimeStateMutable> state) {
+            ^(
+                id<WFRuntimeStateMutable>
+                state
+            ) {
 
         state.locationEnabled =
             NO;
@@ -1212,22 +1634,31 @@ static NSString * const kLastLonKey =
     }];
 
     [[WFEventBus sharedBus]
-        publish:WFEventLocationChanged
+        publish:
+            WFEventLocationChanged
         payload:@{}];
 
-    return [WFError success];
+    return
+        [WFError success];
 }
 
-- (NSArray<WFLocationModel *> *)favorites {
+
+- (NSArray<WFLocationModel *> *)
+    favorites {
 
     NSArray *raw =
-        [[WFSettingsStore sharedStore]
-            arrayForKey:kFavoritesKey];
+        [[WFSettingsStore
+            sharedStore]
+            arrayForKey:
+                kFavoritesKey];
 
-    NSMutableArray<WFLocationModel *> *result =
+    NSMutableArray<
+        WFLocationModel *
+    > *result =
         [NSMutableArray array];
 
-    for (id object in (raw ?: @[])) {
+    for (id object
+         in (raw ?: @[])) {
 
         if (![object
                 isKindOfClass:
@@ -1239,16 +1670,21 @@ static NSString * const kLastLonKey =
         WFLocationModel *location =
             [WFLocationModel
                 fromDictionary:
-                    (NSDictionary *)object];
+                    (NSDictionary *)
+                    object];
 
         if (location != nil) {
-            [result addObject:location];
+
+            [result
+                addObject:
+                    location];
         }
     }
 
     return
         [result copy];
 }
+
 
 - (WFError *)addFavoriteWithName:
     (NSString *)name
@@ -1270,10 +1706,11 @@ static NSString * const kLastLonKey =
     WFLocationModel *location =
         [WFLocationModel
             locationWithName:name
-                    latitude:latitude
-                   longitude:longitude];
+            latitude:latitude
+            longitude:longitude];
 
-    if (![location coordinateIsValid]) {
+    if (![location
+            coordinateIsValid]) {
 
         return
             [WFError
@@ -1283,20 +1720,30 @@ static NSString * const kLastLonKey =
                     @"Invalid favorite coordinate"];
     }
 
-    NSMutableArray<WFLocationModel *> *favorites =
-        [[self favorites] mutableCopy];
+    NSMutableArray<
+        WFLocationModel *
+    > *favorites =
+        [[self favorites]
+            mutableCopy];
 
     if (favorites == nil) {
+
         favorites =
             [NSMutableArray array];
     }
 
-    [favorites addObject:location];
+    [favorites
+        addObject:
+            location];
 
-    [self persistFavorites:favorites];
+    [self
+        persistFavorites:
+            favorites];
 
-    return [WFError success];
+    return
+        [WFError success];
 }
+
 
 - (WFError *)renameFavoriteWithID:
     (NSString *)locationID
@@ -1314,10 +1761,14 @@ static NSString * const kLastLonKey =
                     @"Invalid favorite ID or name"];
     }
 
-    NSMutableArray<WFLocationModel *> *favorites =
-        [[self favorites] mutableCopy];
+    NSMutableArray<
+        WFLocationModel *
+    > *favorites =
+        [[self favorites]
+            mutableCopy];
 
     if (favorites == nil) {
+
         favorites =
             [NSMutableArray array];
     }
@@ -1325,9 +1776,11 @@ static NSString * const kLastLonKey =
     NSUInteger foundIndex =
         NSNotFound;
 
-    for (NSUInteger i = 0;
-         i < favorites.count;
-         i++) {
+    for (
+        NSUInteger i = 0;
+        i < favorites.count;
+        i++
+    ) {
 
         WFLocationModel *location =
             favorites[i];
@@ -1336,12 +1789,15 @@ static NSString * const kLastLonKey =
                 isEqualToString:
                     locationID]) {
 
-            foundIndex = i;
+            foundIndex =
+                i;
+
             break;
         }
     }
 
-    if (foundIndex == NSNotFound) {
+    if (foundIndex ==
+        NSNotFound) {
 
         return
             [WFError
@@ -1352,26 +1808,47 @@ static NSString * const kLastLonKey =
     }
 
     WFLocationModel *oldLocation =
-        favorites[foundIndex];
+        favorites[
+            foundIndex
+        ];
+
+    NSMutableDictionary *serialized =
+        [[oldLocation
+            toDictionary]
+            mutableCopy];
+
+    serialized[@"name"] =
+        newName;
 
     WFLocationModel *replacement =
         [WFLocationModel
-            locationWithName:newName
-                    latitude:
-                        oldLocation.latitude
-                   longitude:
-                        oldLocation.longitude];
+            fromDictionary:
+                serialized];
+
+    if (replacement == nil) {
+
+        return
+            [WFError
+                errorWithCode:
+                    WFErrorCodeStorageError
+                technical:
+                    @"Unable to rename favorite"];
+    }
 
     [favorites
         replaceObjectAtIndex:
             foundIndex
-                  withObject:
+        withObject:
             replacement];
 
-    [self persistFavorites:favorites];
+    [self
+        persistFavorites:
+            favorites];
 
-    return [WFError success];
+    return
+        [WFError success];
 }
+
 
 - (WFError *)deleteFavoriteWithID:
     (NSString *)locationID {
@@ -1386,10 +1863,14 @@ static NSString * const kLastLonKey =
                     @"Empty favorite ID"];
     }
 
-    NSMutableArray<WFLocationModel *> *favorites =
-        [[self favorites] mutableCopy];
+    NSMutableArray<
+        WFLocationModel *
+    > *favorites =
+        [[self favorites]
+            mutableCopy];
 
     if (favorites == nil) {
+
         favorites =
             [NSMutableArray array];
     }
@@ -1397,9 +1878,11 @@ static NSString * const kLastLonKey =
     NSUInteger foundIndex =
         NSNotFound;
 
-    for (NSUInteger i = 0;
-         i < favorites.count;
-         i++) {
+    for (
+        NSUInteger i = 0;
+        i < favorites.count;
+        i++
+    ) {
 
         WFLocationModel *location =
             favorites[i];
@@ -1408,12 +1891,15 @@ static NSString * const kLastLonKey =
                 isEqualToString:
                     locationID]) {
 
-            foundIndex = i;
+            foundIndex =
+                i;
+
             break;
         }
     }
 
-    if (foundIndex == NSNotFound) {
+    if (foundIndex ==
+        NSNotFound) {
 
         return
             [WFError
@@ -1427,10 +1913,14 @@ static NSString * const kLastLonKey =
         removeObjectAtIndex:
             foundIndex];
 
-    [self persistFavorites:favorites];
+    [self
+        persistFavorites:
+            favorites];
 
-    return [WFError success];
+    return
+        [WFError success];
 }
+
 
 - (WFError *)activateFavoriteWithID:
     (NSString *)locationID {
@@ -1445,11 +1935,15 @@ static NSString * const kLastLonKey =
                     @"Empty favorite ID"];
     }
 
-    NSArray<WFLocationModel *> *favorites =
+    NSArray<
+        WFLocationModel *
+    > *favorites =
         [self favorites];
 
-    for (WFLocationModel *location
-         in favorites) {
+    for (
+        WFLocationModel *location
+        in favorites
+    ) {
 
         if ([location.locationID
                 isEqualToString:
@@ -1472,26 +1966,37 @@ static NSString * const kLastLonKey =
                 @"Favorite not found"];
 }
 
+
 - (void)persistFavorites:
-    (NSArray<WFLocationModel *> *)favorites {
+    (NSArray<WFLocationModel *> *)
+    favorites {
 
     NSMutableArray *serialized =
         [NSMutableArray array];
 
-    for (WFLocationModel *location
-         in favorites) {
+    for (
+        WFLocationModel *location
+        in favorites
+    ) {
 
         NSDictionary *dict =
-            [location toDictionary];
+            [location
+                toDictionary];
 
         if (dict != nil) {
-            [serialized addObject:dict];
+
+            [serialized
+                addObject:
+                    dict];
         }
     }
 
-    [[WFSettingsStore sharedStore]
-        setArrayForKey:kFavoritesKey
-                 value:serialized];
+    [[WFSettingsStore
+        sharedStore]
+        setArrayForKey:
+            kFavoritesKey
+        value:
+            serialized];
 }
 
 @end
@@ -1501,22 +2006,46 @@ static NSString * const kLastLonKey =
 
 @interface WFMovementEngine ()
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 WFMovementEngineState state;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double currentLatitude;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double currentLongitude;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double courseDegrees;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double distanceRemainingMeters;
 
-@property (nonatomic, assign, readwrite)
+@property (
+    nonatomic,
+    assign,
+    readwrite
+)
 double progress;
 
 @end
@@ -1532,9 +2061,11 @@ double progress;
     double _speedMps;
     double _totalDistanceMeters;
 
-    NSTimeInterval _updateIntervalSeconds;
+    NSTimeInterval
+        _updateIntervalSeconds;
 
     NSDate *_anchorDate;
+
     double _progressAtAnchor;
 
     void (^_onTick)(
@@ -1548,9 +2079,11 @@ double progress;
     void (^_onComplete)(void);
 }
 
+
 - (instancetype)init {
 
-    self = [super init];
+    self =
+        [super init];
 
     if (self) {
 
@@ -1573,6 +2106,7 @@ double progress;
     return self;
 }
 
+
 - (WFError *)startFromLatitude:
     (double)fromLat
                      longitude:
@@ -1594,14 +2128,16 @@ double progress;
                     onComplete:
     (void (^)(void))onComplete {
 
-    if (fromLat < -90.0 ||
+    if (
+        fromLat < -90.0 ||
         fromLat > 90.0 ||
         toLat < -90.0 ||
         toLat > 90.0 ||
         fromLon < -180.0 ||
         fromLon > 180.0 ||
         toLon < -180.0 ||
-        toLon > 180.0) {
+        toLon > 180.0
+    ) {
 
         return
             [WFError
@@ -1611,8 +2147,10 @@ double progress;
                     @"Invalid movement coordinate"];
     }
 
-    if (metersPerSecond <= 0.0 ||
-        metersPerSecond > 300.0) {
+    if (
+        metersPerSecond <= 0.0 ||
+        metersPerSecond > 300.0
+    ) {
 
         return
             [WFError
@@ -1622,8 +2160,10 @@ double progress;
                     @"Movement speed out of range"];
     }
 
-    if (intervalSeconds <= 0.0 ||
-        intervalSeconds > 10.0) {
+    if (
+        intervalSeconds <= 0.0 ||
+        intervalSeconds > 10.0
+    ) {
 
         intervalSeconds =
             1.0;
@@ -1673,7 +2213,8 @@ double progress;
     _anchorDate =
         [NSDate date];
 
-    if (_totalDistanceMeters < 1.0) {
+    if (_totalDistanceMeters <
+        1.0) {
 
         self.currentLatitude =
             toLat;
@@ -1702,14 +2243,17 @@ double progress;
         }
 
         if (_onComplete != nil) {
+
             _onComplete();
         }
 
-        return [WFError success];
+        return
+            [WFError success];
     }
 
     self.courseDegrees =
-        wolfox::initialBearingDegrees(
+        wolfox::
+        initialBearingDegrees(
             _start,
             _destination
         );
@@ -1719,15 +2263,21 @@ double progress;
 
     [self startTimer];
 
-    return [WFError success];
+    return
+        [WFError success];
 }
+
 
 - (void)startTimer {
 
     if (_timer != nil) {
 
-        dispatch_source_cancel(_timer);
-        _timer = nil;
+        dispatch_source_cancel(
+            _timer
+        );
+
+        _timer =
+            nil;
     }
 
     _timer =
@@ -1775,30 +2325,43 @@ double progress;
             return;
         }
 
-        if (strongSelf.state !=
-            WFMovementEngineStateRunning) {
+        if (
+            strongSelf.state !=
+            WFMovementEngineStateRunning
+        ) {
 
             return;
         }
 
-        [strongSelf tickLocked];
+        [strongSelf
+            tickLocked];
     });
 
-    dispatch_resume(_timer);
+    dispatch_resume(
+        _timer
+    );
 }
+
 
 - (void)tickLocked {
 
     NSTimeInterval elapsed =
-        -[_anchorDate timeIntervalSinceNow];
+        -[_anchorDate
+            timeIntervalSinceNow];
 
     double addedProgress =
         1.0;
 
-    if (_totalDistanceMeters > 0.0) {
+    if (
+        _totalDistanceMeters >
+        0.0
+    ) {
 
         addedProgress =
-            (_speedMps * elapsed) /
+            (
+                _speedMps *
+                elapsed
+            ) /
             _totalDistanceMeters;
     }
 
@@ -1809,7 +2372,8 @@ double progress;
         );
 
     wolfox::Coordinate current =
-        wolfox::interpolateGreatCircle(
+        wolfox::
+        interpolateGreatCircle(
             _start,
             _destination,
             fraction
@@ -1831,7 +2395,8 @@ double progress;
     if (fraction < 1.0) {
 
         self.courseDegrees =
-            wolfox::initialBearingDegrees(
+            wolfox::
+            initialBearingDegrees(
                 current,
                 _destination
             );
@@ -1849,7 +2414,8 @@ double progress;
     }
 
     [[WFEventBus sharedBus]
-        publish:WFEventLocationChanged
+        publish:
+            WFEventLocationChanged
         payload:@{
 
             @"lat":
@@ -1862,7 +2428,10 @@ double progress;
                 @(self.courseDegrees),
 
             @"remaining":
-                @(self.distanceRemainingMeters),
+                @(
+                    self
+                    .distanceRemainingMeters
+                ),
 
             @"progress":
                 @(fraction)
@@ -1875,28 +2444,41 @@ double progress;
 
         if (_timer != nil) {
 
-            dispatch_source_cancel(_timer);
-            _timer = nil;
+            dispatch_source_cancel(
+                _timer
+            );
+
+            _timer =
+                nil;
         }
 
         void (^completion)(void) =
             [_onComplete copy];
 
-        _onTick = nil;
-        _onComplete = nil;
+        _onTick =
+            nil;
+
+        _onComplete =
+            nil;
 
         if (completion != nil) {
+
             completion();
         }
     }
 }
 
+
 - (void)pause {
 
-    dispatch_sync(_engineQueue, ^{
+    dispatch_sync(
+        _engineQueue,
+        ^{
 
-        if (self.state !=
-            WFMovementEngineStateRunning) {
+        if (
+            self.state !=
+            WFMovementEngineStateRunning
+        ) {
 
             return;
         }
@@ -1907,26 +2489,34 @@ double progress;
         self.state =
             WFMovementEngineStatePaused;
 
-        if (self->_timer != nil) {
+        if (
+            self->_timer != nil
+        ) {
 
             dispatch_source_cancel(
                 self->_timer
             );
 
-            self->_timer = nil;
+            self->_timer =
+                nil;
         }
     });
 }
+
 
 - (void)resume {
 
     __block BOOL shouldStartTimer =
         NO;
 
-    dispatch_sync(_engineQueue, ^{
+    dispatch_sync(
+        _engineQueue,
+        ^{
 
-        if (self.state !=
-            WFMovementEngineStatePaused) {
+        if (
+            self.state !=
+            WFMovementEngineStatePaused
+        ) {
 
             return;
         }
@@ -1942,21 +2532,29 @@ double progress;
     });
 
     if (shouldStartTimer) {
-        [self startTimer];
+
+        [self
+            startTimer];
     }
 }
 
+
 - (void)stop {
 
-    dispatch_sync(_engineQueue, ^{
+    dispatch_sync(
+        _engineQueue,
+        ^{
 
-        if (self->_timer != nil) {
+        if (
+            self->_timer != nil
+        ) {
 
             dispatch_source_cancel(
                 self->_timer
             );
 
-            self->_timer = nil;
+            self->_timer =
+                nil;
         }
 
         self->_onTick =
@@ -1968,8 +2566,16 @@ double progress;
         self->_progressAtAnchor =
             0.0;
 
-        if (self.state !=
-            WFMovementEngineStateFinished) {
+        self.distanceRemainingMeters =
+            0.0;
+
+        self.progress =
+            0.0;
+
+        if (
+            self.state !=
+            WFMovementEngineStateFinished
+        ) {
 
             self.state =
                 WFMovementEngineStateStopped;
@@ -1984,7 +2590,10 @@ double progress;
 
 @interface WFAppManager ()
 
-@property (nonatomic, strong)
+@property (
+    nonatomic,
+    strong
+)
 WFMovementEngine *movementEngine;
 
 @end
@@ -1992,18 +2601,24 @@ WFMovementEngine *movementEngine;
 
 @implementation WFAppManager
 
+
 + (instancetype)sharedManager {
 
-    static WFAppManager *instance = nil;
+    static WFAppManager *instance =
+        nil;
+
     static dispatch_once_t onceToken;
 
     dispatch_once(&onceToken, ^{
+
         instance =
-            [[WFAppManager alloc] init];
+            [[WFAppManager alloc]
+                init];
     });
 
     return instance;
 }
+
 
 - (void)initialize {
 
@@ -2011,8 +2626,11 @@ WFMovementEngine *movementEngine;
 
     dispatch_once(&onceToken, ^{
 
+        WolFoxInstallRuntimeHooks();
+
         [[WFLogger sharedLogger]
-            logCategory:WFLogCore
+            logCategory:
+                WFLogCore
             message:
                 @"WolFox standalone dylib initialized"];
 
@@ -2021,44 +2639,56 @@ WFMovementEngine *movementEngine;
     });
 }
 
-- (WFError *)activateStaticLocationWithLatitude:
+
+- (WFError *)
+    activateStaticLocationWithLatitude:
     (double)latitude
-                                      longitude:
+    longitude:
     (double)longitude {
 
     return
-        [[WFLocationService sharedService]
+        [[WFLocationService
+            sharedService]
             setLocationWithLatitude:
                 latitude
             longitude:
                 longitude];
 }
 
-- (WFError *)restoreDefaultLocation {
 
-    [self stopMovement];
+- (WFError *)
+    restoreDefaultLocation {
+
+    [self
+        stopMovement];
 
     return
-        [[WFLocationService sharedService]
+        [[WFLocationService
+            sharedService]
             restoreDefault];
 }
 
-- (WFError *)startMovementFromLatitude:
+
+- (WFError *)
+    startMovementFromLatitude:
     (double)fromLat
-                             longitude:
+    longitude:
     (double)fromLon
-                            toLatitude:
+    toLatitude:
     (double)toLat
-                            longitude2:
+    longitude2:
     (double)toLon
-                                 speed:
+    speed:
     (double)metersPerSecond {
 
     WFRuntimeState *runtime =
-        [WFRuntimeState sharedState];
+        [WFRuntimeState
+            sharedState];
 
-    if (runtime.randomMovementActive ||
-        runtime.routeActive) {
+    if (
+        runtime.randomMovementActive ||
+        runtime.routeActive
+    ) {
 
         return
             [WFError
@@ -2068,26 +2698,38 @@ WFMovementEngine *movementEngine;
                     @"Random or route mode is active"];
     }
 
-    if (self.movementEngine != nil) {
+    if (
+        self.movementEngine != nil
+    ) {
 
-        [self.movementEngine stop];
-        self.movementEngine = nil;
+        [self.movementEngine
+            stop];
+
+        self.movementEngine =
+            nil;
     }
 
     self.movementEngine =
-        [[WFMovementEngine alloc] init];
+        [[WFMovementEngine alloc]
+            init];
 
     __weak WFAppManager *weakSelf =
         self;
 
     WFError *result =
         [self.movementEngine
-            startFromLatitude:fromLat
-            longitude:fromLon
-            toLatitude:toLat
-            longitude2:toLon
-            speed:metersPerSecond
-            updateInterval:1.0
+            startFromLatitude:
+                fromLat
+            longitude:
+                fromLon
+            toLatitude:
+                toLat
+            longitude2:
+                toLon
+            speed:
+                metersPerSecond
+            updateInterval:
+                1.0
             onTick:
                 ^(
                     double lat,
@@ -2097,9 +2739,13 @@ WFMovementEngine *movementEngine;
                     double progress
                 ) {
 
-        [[WFRuntimeState sharedState]
+        [[WFRuntimeState
+            sharedState]
             performUpdate:
-                ^(id<WFRuntimeStateMutable> state) {
+                ^(
+                    id<WFRuntimeStateMutable>
+                    state
+                ) {
 
             state.locationEnabled =
                 YES;
@@ -2132,7 +2778,8 @@ WFMovementEngine *movementEngine;
                 @"";
         }];
 
-        [[WFEventBus sharedBus]
+        [[WFEventBus
+            sharedBus]
             publish:
                 WFEventRouteProgressChanged
             payload:@{
@@ -2167,11 +2814,16 @@ WFMovementEngine *movementEngine;
                 @"Movement finished"];
     }];
 
-    if ([result isSuccess]) {
+    if ([result
+            isSuccess]) {
 
-        [[WFRuntimeState sharedState]
+        [[WFRuntimeState
+            sharedState]
             performUpdate:
-                ^(id<WFRuntimeStateMutable> state) {
+                ^(
+                    id<WFRuntimeStateMutable>
+                    state
+                ) {
 
             state.locationEnabled =
                 YES;
@@ -2195,8 +2847,9 @@ WFMovementEngine *movementEngine;
                 metersPerSecond;
 
             state.movementCourse =
-                self.movementEngine
-                    .courseDegrees;
+                self
+                .movementEngine
+                .courseDegrees;
 
             state.lastAction =
                 @"Movement started";
@@ -2215,11 +2868,15 @@ WFMovementEngine *movementEngine;
     return result;
 }
 
+
 - (WFError *)pauseMovement {
 
-    if (self.movementEngine == nil ||
+    if (
+        self.movementEngine ==
+            nil ||
         self.movementEngine.state !=
-            WFMovementEngineStateRunning) {
+            WFMovementEngineStateRunning
+    ) {
 
         return
             [WFError
@@ -2229,11 +2886,15 @@ WFMovementEngine *movementEngine;
                     @"No running movement"];
     }
 
-    [self.movementEngine pause];
+    [self.movementEngine
+        pause];
 
     [[WFRuntimeState sharedState]
         performUpdate:
-            ^(id<WFRuntimeStateMutable> state) {
+            ^(
+                id<WFRuntimeStateMutable>
+                state
+            ) {
 
         state.movementPaused =
             YES;
@@ -2245,14 +2906,19 @@ WFMovementEngine *movementEngine;
             @"";
     }];
 
-    return [WFError success];
+    return
+        [WFError success];
 }
+
 
 - (WFError *)resumeMovement {
 
-    if (self.movementEngine == nil ||
+    if (
+        self.movementEngine ==
+            nil ||
         self.movementEngine.state !=
-            WFMovementEngineStatePaused) {
+            WFMovementEngineStatePaused
+    ) {
 
         return
             [WFError
@@ -2262,11 +2928,15 @@ WFMovementEngine *movementEngine;
                     @"No paused movement"];
     }
 
-    [self.movementEngine resume];
+    [self.movementEngine
+        resume];
 
     [[WFRuntimeState sharedState]
         performUpdate:
-            ^(id<WFRuntimeStateMutable> state) {
+            ^(
+                id<WFRuntimeStateMutable>
+                state
+            ) {
 
         state.movementPaused =
             NO;
@@ -2278,23 +2948,33 @@ WFMovementEngine *movementEngine;
             @"";
     }];
 
-    return [WFError success];
+    return
+        [WFError success];
 }
+
 
 - (WFError *)stopMovement {
 
-    if (self.movementEngine != nil) {
+    if (
+        self.movementEngine !=
+        nil
+    ) {
 
-        [self.movementEngine stop];
-        self.movementEngine = nil;
+        [self.movementEngine
+            stop];
+
+        self.movementEngine =
+            nil;
     }
 
     [self
         resetMovementState:
             @"Movement stopped"];
 
-    return [WFError success];
+    return
+        [WFError success];
 }
+
 
 - (void)resetMovementState:
     (NSString *)action {
@@ -2304,7 +2984,10 @@ WFMovementEngine *movementEngine;
 
     [[WFRuntimeState sharedState]
         performUpdate:
-            ^(id<WFRuntimeStateMutable> state) {
+            ^(
+                id<WFRuntimeStateMutable>
+                state
+            ) {
 
         state.movementActive =
             NO;
@@ -2318,10 +3001,14 @@ WFMovementEngine *movementEngine;
         state.movementCourse =
             0.0;
 
-        if (state.locationMode ==
-            WFLocationModeMovement) {
+        if (
+            state.locationMode ==
+            WFLocationModeMovement
+        ) {
 
-            if (state.locationEnabled) {
+            if (
+                state.locationEnabled
+            ) {
 
                 state.locationMode =
                     WFLocationModeStatic;
@@ -2334,7 +3021,8 @@ WFMovementEngine *movementEngine;
         }
 
         state.lastAction =
-            action ?: @"Movement stopped";
+            action
+            ?: @"Movement stopped";
 
         state.lastError =
             @"";
@@ -2344,7 +3032,8 @@ WFMovementEngine *movementEngine;
 
 #pragma mark - Future Phases
 
-- (WFError *)startRandomMovementWithRadius:
+- (WFError *)
+    startRandomMovementWithRadius:
     (double)radiusMeters {
 
     (void)radiusMeters;
@@ -2357,9 +3046,11 @@ WFMovementEngine *movementEngine;
                 @"Random movement not implemented yet"];
 }
 
-- (WFError *)startRouteWithWaypoints:
+
+- (WFError *)
+    startRouteWithWaypoints:
     (NSArray *)waypoints
-                               speed:
+    speed:
     (double)metersPerSecond {
 
     (void)waypoints;
@@ -2373,7 +3064,9 @@ WFMovementEngine *movementEngine;
                 @"Route engine not implemented yet"];
 }
 
-- (WFError *)setActiveWiFiProfileWithID:
+
+- (WFError *)
+    setActiveWiFiProfileWithID:
     (NSString *)profileID {
 
     (void)profileID;
@@ -2386,7 +3079,9 @@ WFMovementEngine *movementEngine;
                 @"WiFi profiles not implemented yet"];
 }
 
-- (WFError *)setActiveDeviceProfileWithID:
+
+- (WFError *)
+    setActiveDeviceProfileWithID:
     (NSString *)profileID {
 
     (void)profileID;
@@ -2398,6 +3093,7 @@ WFMovementEngine *movementEngine;
             technical:
                 @"Device profiles not implemented yet"];
 }
+
 
 - (WFError *)startScheduler {
 
@@ -2419,18 +3115,23 @@ static void WolFoxStandaloneInit(void) {
 
     @autoreleasepool {
 
-        // Initialize WolFox core
-        [[WFAppManager sharedManager]
+        [[WFAppManager
+            sharedManager]
             initialize];
 
-        // UIKit work must run on the main thread
-        dispatch_async(dispatch_get_main_queue(), ^{
+        dispatch_async(
+            dispatch_get_main_queue(),
+            ^{
 
-            [[WFLogger sharedLogger]
-                logCategory:WFLogUI
-                message:@"Starting WolFox UI installation"];
+            [[WFLogger
+                sharedLogger]
+                logCategory:
+                    WFLogUI
+                message:
+                    @"Starting WolFox UI installation"];
 
-            [[WFUIController sharedController]
+            [[WFUIController
+                sharedController]
                 installWhenReady];
         });
     }
