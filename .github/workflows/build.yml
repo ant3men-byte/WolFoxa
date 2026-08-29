@@ -5,6 +5,9 @@ on:
   push:
     branches: [ main ]
 
+env:
+  THEOS: /opt/theos
+
 jobs:
   linux-tests:
     name: Linux Unit Tests
@@ -15,9 +18,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y clang
       - name: Run all Linux tests
         run: |
-          set -o pipefail
+          set -eo pipefail
           c++ -std=c++17 -Wall -Wextra -D_USE_MATH_DEFINES Tests/AllTests.cpp Portable.cpp -o tests
-          ./tests | tee test_output.log
+          ./tests 2>&1 | tee test_output.log
       - name: Upload test summary
         if: always()
         uses: actions/upload-artifact@v4
@@ -35,12 +38,18 @@ jobs:
         run: |
           set -e
           grep -v '#' WolFoxTargetBundles.txt | grep -v '^[[:space:]]*$' > /tmp/bundles.txt || true
-          test -s /tmp/bundles.txt || { echo "FAIL: no target bundle IDs configured"; exit 1; }
-          if grep -q '\*' WolFoxTargetBundles.txt; then
+          if [ ! -s /tmp/bundles.txt ]; then
+            echo "FAIL: no target bundle IDs configured"
+            exit 1
+          fi
+          if grep -q -F '*' WolFoxTargetBundles.txt; then
             echo "FAIL: wildcards forbidden"
             exit 1
           fi
-          grep -q 'Bundles' wolfox.plist || { echo "FAIL: wolfox.plist missing Bundles filter"; exit 1; }
+          if ! grep -q 'Bundles' wolfox.plist; then
+            echo "FAIL: wolfox.plist missing Bundles filter"
+            exit 1
+          fi
           echo "OK: targets validated:"
           cat /tmp/bundles.txt
 
@@ -48,24 +57,29 @@ jobs:
     name: Theos Build (Rootful + Rootless)
     needs: [linux-tests, validate-config]
     runs-on: ubuntu-22.04
-    env:
-      THEOS: /opt/theos
     steps:
       - uses: actions/checkout@v4
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git perl rsync curl wget unzip clang llvm lld ldid python3 fakeroot dpkg-dev file xz-utils
+          sudo apt-get install -y build-essential git perl rsync curl wget unzip \
+            clang llvm lld python3 fakeroot dpkg-dev file xz-utils
+
+      - name: Install ldid (codesigning tool, not in apt)
+        run: |
+          curl -L https://github.com/ProcursusTeam/ldid/releases/latest/download/ldid_linux_x86_64 -o /usr/local/bin/ldid
+          chmod +x /usr/local/bin/ldid
+          ldid -V
 
       - name: Prepare Theos + iPhoneOS SDK
         run: |
           git clone --recursive https://github.com/theos/theos.git /opt/theos
           curl -L https://github.com/theos/sdks/archive/refs/heads/master.zip -o /tmp/sdks.zip
           unzip -q /tmp/sdks.zip -d /tmp/sdks
-          find /tmp/sdks -maxdepth 1 -type d -name "iPhoneOS*" -exec cp -r {} /opt/theos/sdks/iPhoneOS.sdk \;
-          test -d /opt/theos/sdks/iPhoneOS.sdk || { echo "NO IPHONEOS SDK FOUND"; exit 1; }
-          echo "SDK installed"
+          mkdir -p /opt/theos/sdks
+          cp -r /tmp/sdks/sdks-master/iPhoneOS* /opt/theos/sdks/
+          ls /opt/theos/sdks/
 
       - name: Build Rootful package
         run: |
@@ -84,15 +98,19 @@ jobs:
 
       - name: Locate generated dylib from actual build output
         run: |
-          find . -type f -name "WolFox.dylib" -exec cp {} artifacts/WolFox.dylib \;
-          test -f artifacts/WolFox.dylib || { echo "FAIL: WolFox.dylib not found"; exit 1; }
+          find . -type f -name "WolFox.dylib" > /tmp/dylib_path.txt
+          if [ ! -s /tmp/dylib_path.txt ]; then
+            echo "FAIL: WolFox.dylib not found"
+            exit 1
+          fi
+          mkdir -p artifacts
+          head -n1 /tmp/dylib_path.txt | xargs cp -v artifacts/WolFox.dylib
 
       - name: Verify arm64 Mach-O dynamic library
         run: |
           file -b artifacts/WolFox.dylib
           file -b artifacts/WolFox.dylib | grep -qi "dynamically linked shared library" || { echo "FAIL: not a dynamic library"; exit 1; }
           file -b artifacts/WolFox.dylib | grep -qi "arm64" || { echo "FAIL: no arm64 slice"; exit 1; }
-          echo "OK: arm64 dylib verified"
 
       - name: Calculate SHA-256 checksums
         working-directory: artifacts
