@@ -967,7 +967,233 @@ static NSString * const kLastLonKey = @"wolfox.lastLongitude";
 - (WFError *)stopMovement { if(self.movementEngine){[self.movementEngine stop];self.movementEngine=nil;} [self resetMovementState:@"Movement stopped"]; return [WFError success]; }
 - (void)resetMovementState:(NSString *)action { self.movementEngine=nil; [[WFRuntimeState sharedState] performUpdate:^(id<WFRuntimeStateMutable> state){ state.movementActive=NO; state.movementPaused=NO; state.movementSpeed=0; state.movementCourse=0; if(state.locationMode==WFLocationModeMovement) state.locationMode=state.locationEnabled?WFLocationModeStatic:WFLocationModeDefault; state.lastAction=action?:@"Movement stopped"; state.lastError=@""; }]; }
 - (WFError *)startRandomMovementWithRadius:(double)radiusMeters { (void)radiusMeters; return [WFError errorWithCode:WFErrorCodeNotAvailable technical:@"Random movement not implemented yet"]; }
-- (WFError *)startRouteWithWaypoints:(NSArray *)waypoints speed:(double)metersPerSecond { (void)waypoints; (void)metersPerSecond; return [WFError errorWithCode:WFErrorCodeNotAvailable technical:@"Route engine not implemented yet"]; }
+- (WFError *)startRouteWithWaypoints:(NSArray *)waypoints speed:(double)metersPerSecond {
+
+    if (![waypoints isKindOfClass:[NSArray class]] || waypoints.count < 2) {
+        return [WFError errorWithCode:WFErrorCodeInvalidInput
+                            technical:@"Route requires at least two waypoints"];
+    }
+
+    if (metersPerSecond <= 0.0 || metersPerSecond > 300.0) {
+        return [WFError errorWithCode:WFErrorCodeInvalidInput
+                            technical:@"Route speed out of range"];
+    }
+
+    NSDictionary *first =
+        [waypoints.firstObject isKindOfClass:[NSDictionary class]]
+            ? waypoints.firstObject
+            : nil;
+
+    NSDictionary *last =
+        [waypoints.lastObject isKindOfClass:[NSDictionary class]]
+            ? waypoints.lastObject
+            : nil;
+
+    NSNumber *fromLatN = first[@"lat"];
+    NSNumber *fromLonN = first[@"lon"];
+    NSNumber *toLatN = last[@"lat"];
+    NSNumber *toLonN = last[@"lon"];
+
+    if (![fromLatN isKindOfClass:[NSNumber class]] ||
+        ![fromLonN isKindOfClass:[NSNumber class]] ||
+        ![toLatN isKindOfClass:[NSNumber class]] ||
+        ![toLonN isKindOfClass:[NSNumber class]]) {
+
+        return [WFError errorWithCode:WFErrorCodeInvalidInput
+                            technical:@"Route waypoint format must contain numeric lat/lon"];
+    }
+
+    double fromLat = fromLatN.doubleValue;
+    double fromLon = fromLonN.doubleValue;
+    double toLat = toLatN.doubleValue;
+    double toLon = toLonN.doubleValue;
+
+    if (fromLat < -90.0 || fromLat > 90.0 ||
+        toLat < -90.0 || toLat > 90.0 ||
+        fromLon < -180.0 || fromLon > 180.0 ||
+        toLon < -180.0 || toLon > 180.0) {
+
+        return [WFError errorWithCode:WFErrorCodeInvalidInput
+                            technical:@"Invalid route coordinate"];
+    }
+
+    WFRuntimeState *runtime = [WFRuntimeState sharedState];
+
+    if (runtime.randomMovementActive) {
+        return [WFError errorWithCode:WFErrorCodeConflict
+                            technical:@"Random mode is active"];
+    }
+
+    if (self.movementEngine) {
+        [self.movementEngine stop];
+        self.movementEngine = nil;
+    }
+
+    self.movementEngine = [[WFMovementEngine alloc] init];
+
+    __weak WFAppManager *weakSelf = self;
+
+    WFAuditLogFeature(
+        @"startRoute",
+        @"REQUESTED",
+        [NSString stringWithFormat:
+            @"from=%.8f,%.8f | to=%.8f,%.8f | speed=%.2f",
+            fromLat, fromLon, toLat, toLon, metersPerSecond]
+    );
+
+    WFError *result =
+        [self.movementEngine
+            startFromLatitude:fromLat
+            longitude:fromLon
+            toLatitude:toLat
+            longitude2:toLon
+            speed:metersPerSecond
+            updateInterval:1.0
+            onTick:^(double lat,
+                     double lon,
+                     double course,
+                     double remaining,
+                     double progress) {
+
+                [[WFRuntimeState sharedState]
+                    performUpdate:^(id<WFRuntimeStateMutable> state) {
+
+                        state.locationEnabled = YES;
+                        state.locationMode = WFLocationModeMovement;
+
+                        state.currentLatitude = lat;
+                        state.currentLongitude = lon;
+
+                        state.movementActive = YES;
+                        state.movementPaused = NO;
+                        state.movementSpeed = metersPerSecond;
+                        state.movementCourse = course;
+
+                        state.routeActive = YES;
+                        state.routePaused = NO;
+                        state.routeProgress = progress;
+                        state.routeDistanceRemaining = remaining;
+                        state.routeSpeed = metersPerSecond;
+
+                        state.lastAction = @"Route update";
+                        state.lastError = @"";
+                    }];
+
+                WFAuditLogFeature(
+                    @"routeTick",
+                    @"UPDATE",
+                    [NSString stringWithFormat:
+                        @"lat=%.8f | lon=%.8f | progress=%.4f | remaining=%.2f | course=%.2f",
+                        lat, lon, progress, remaining, course]
+                );
+
+                [[WFEventBus sharedBus]
+                    publish:WFEventRouteProgressChanged
+                    payload:@{
+                        @"lat": @(lat),
+                        @"lon": @(lon),
+                        @"course": @(course),
+                        @"remaining": @(remaining),
+                        @"progress": @(progress)
+                    }];
+            }
+            onComplete:^{
+
+                WFAppManager *strongSelf = weakSelf;
+
+                [[WFRuntimeState sharedState]
+                    performUpdate:^(id<WFRuntimeStateMutable> state) {
+
+                        state.currentLatitude = toLat;
+                        state.currentLongitude = toLon;
+
+                        state.movementActive = NO;
+                        state.movementPaused = NO;
+                        state.movementSpeed = 0.0;
+                        state.movementCourse = 0.0;
+
+                        state.routeActive = NO;
+                        state.routePaused = NO;
+                        state.routeProgress = 1.0;
+                        state.routeDistanceRemaining = 0.0;
+                        state.routeSpeed = 0.0;
+
+                        state.locationEnabled = YES;
+                        state.locationMode = WFLocationModeStatic;
+
+                        state.lastAction = @"Route finished";
+                        state.lastError = @"";
+                    }];
+
+                if (strongSelf) {
+                    strongSelf.movementEngine = nil;
+                }
+
+                WFAuditLogFeature(
+                    @"startRoute",
+                    @"COMPLETED",
+                    [NSString stringWithFormat:
+                        @"destination=%.8f,%.8f",
+                        toLat, toLon]
+                );
+
+                WFAuditLogState(
+                    @"routeComplete",
+                    [[WFRuntimeState sharedState] snapshotForUI]
+                );
+            }];
+
+    if ([result isSuccess]) {
+
+        [[WFRuntimeState sharedState]
+            performUpdate:^(id<WFRuntimeStateMutable> state) {
+
+                state.locationEnabled = YES;
+                state.locationMode = WFLocationModeMovement;
+
+                state.currentLatitude = fromLat;
+                state.currentLongitude = fromLon;
+
+                state.movementActive = YES;
+                state.movementPaused = NO;
+                state.movementSpeed = metersPerSecond;
+                state.movementCourse = self.movementEngine.courseDegrees;
+
+                state.routeActive = YES;
+                state.routePaused = NO;
+                state.routeProgress = 0.0;
+                state.routeDistanceRemaining =
+                    self.movementEngine.distanceRemainingMeters;
+                state.routeSpeed = metersPerSecond;
+
+                state.lastAction = @"Route started";
+                state.lastError = @"";
+            }];
+
+        WFAuditLogFeature(
+            @"startRoute",
+            @"SUCCESS",
+            [NSString stringWithFormat:
+                @"from=%.8f,%.8f | to=%.8f,%.8f | speed=%.2f",
+                fromLat, fromLon, toLat, toLon, metersPerSecond]
+        );
+
+        WFAuditLogState(
+            @"startRoute",
+            [[WFRuntimeState sharedState] snapshotForUI]
+        );
+    }
+    else {
+
+        WFAuditLogFeature(
+            @"startRoute",
+            @"ERROR",
+            result.technicalMessage ?: @"Unknown route start error"
+        );
+    }
+
+    return result;
+}
 - (WFError *)setActiveWiFiProfileWithID:(NSString *)profileID { (void)profileID; return [WFError errorWithCode:WFErrorCodeNotAvailable technical:@"WiFi profiles not implemented yet"]; }
 - (WFError *)setActiveDeviceProfileWithID:(NSString *)profileID { (void)profileID; return [WFError errorWithCode:WFErrorCodeNotAvailable technical:@"Device profiles not implemented yet"]; }
 - (WFError *)startScheduler { return [WFError errorWithCode:WFErrorCodeNotAvailable technical:@"Scheduler not implemented yet"]; }
