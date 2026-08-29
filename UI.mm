@@ -1,18 +1,14 @@
 #import "WolFox.h"
 #import "UI.h"
-#import <UIKit/UIKit.h>
-
 
 #import <UIKit/UIKit.h>
 
 #pragma mark - WFUIController
 
 @implementation WFUIController {
-    UIView *_floatingButton;
-    UIView *_panel;
-    UITextField *_latField;
-    UITextField *_lonField;
-    UILabel *_statusLabel;
+    UIButton *_debugButton;
+    dispatch_source_t _retryTimer;
+    NSInteger _retryCount;
 }
 
 + (instancetype)sharedController {
@@ -31,92 +27,277 @@
 
 - (void)installWhenReady {
 
+    [[WFLogger sharedLogger]
+        logCategory:WFLogUI
+        message:@"WFUIController installWhenReady called"];
+
     [[NSNotificationCenter defaultCenter]
         addObserver:self
-           selector:@selector(appWindowDidAppear)
+           selector:@selector(applicationDidBecomeActive:)
+               name:UIApplicationDidBecomeActiveNotification
+             object:nil];
+
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(windowDidBecomeVisible:)
                name:UIWindowDidBecomeVisibleNotification
              object:nil];
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self appWindowDidAppear];
+        [self startRetryLoop];
     });
 }
 
-- (void)appWindowDidAppear {
+#pragma mark - Notifications
+
+- (void)applicationDidBecomeActive:
+    (NSNotification *)notification {
+
+    (void)notification;
+
+    [[WFLogger sharedLogger]
+        logCategory:WFLogUI
+        message:@"UIApplicationDidBecomeActiveNotification received"];
 
     dispatch_async(dispatch_get_main_queue(), ^{
-
-        if (self->_floatingButton == nil) {
-            [self buildFloatingButton];
-        }
+        [self tryInstallDebugButton];
     });
 }
 
-- (UIWindow *)keyWindow {
+- (void)windowDidBecomeVisible:
+    (NSNotification *)notification {
+
+    UIWindow *window =
+        [notification.object isKindOfClass:[UIWindow class]]
+            ? (UIWindow *)notification.object
+            : nil;
+
+    NSString *message =
+        [NSString stringWithFormat:
+            @"UIWindowDidBecomeVisibleNotification received window=%@",
+            window];
+
+    [[WFLogger sharedLogger]
+        logCategory:WFLogUI
+        message:message];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self tryInstallDebugButton];
+    });
+}
+
+#pragma mark - Retry
+
+- (void)startRetryLoop {
+
+    if (_retryTimer != nil) {
+        return;
+    }
+
+    _retryCount = 0;
+
+    dispatch_queue_t queue =
+        dispatch_get_main_queue();
+
+    _retryTimer =
+        dispatch_source_create(
+            DISPATCH_SOURCE_TYPE_TIMER,
+            0,
+            0,
+            queue
+        );
+
+    uint64_t interval =
+        (uint64_t)(0.5 * NSEC_PER_SEC);
+
+    dispatch_source_set_timer(
+        _retryTimer,
+        dispatch_time(
+            DISPATCH_TIME_NOW,
+            0
+        ),
+        interval,
+        (uint64_t)(0.05 * NSEC_PER_SEC)
+    );
+
+    __weak WFUIController *weakSelf =
+        self;
+
+    dispatch_source_set_event_handler(
+        _retryTimer,
+        ^{
+
+        WFUIController *strongSelf =
+            weakSelf;
+
+        if (strongSelf == nil) {
+            return;
+        }
+
+        strongSelf->_retryCount += 1;
+
+        [strongSelf tryInstallDebugButton];
+
+        if (strongSelf->_debugButton != nil ||
+            strongSelf->_retryCount >= 40) {
+
+            [strongSelf stopRetryLoop];
+        }
+    });
+
+    dispatch_resume(_retryTimer);
+
+    [[WFLogger sharedLogger]
+        logCategory:WFLogUI
+        message:@"UI retry loop started"];
+}
+
+- (void)stopRetryLoop {
+
+    if (_retryTimer == nil) {
+        return;
+    }
+
+    dispatch_source_cancel(_retryTimer);
+
+    _retryTimer = nil;
+
+    [[WFLogger sharedLogger]
+        logCategory:WFLogUI
+        message:@"UI retry loop stopped"];
+}
+
+#pragma mark - Window Discovery
+
+- (NSArray<UIWindow *> *)allWindows {
+
+    NSMutableArray<UIWindow *> *result =
+        [NSMutableArray array];
 
     UIApplication *application =
         [UIApplication sharedApplication];
 
-    for (UIScene *scene in application.connectedScenes) {
+    if (@available(iOS 13.0, *)) {
 
-        if (![scene isKindOfClass:[UIWindowScene class]]) {
-            continue;
-        }
+        for (UIScene *scene in
+             application.connectedScenes) {
 
-        UIWindowScene *windowScene =
-            (UIWindowScene *)scene;
+            if (![scene
+                    isKindOfClass:
+                        [UIWindowScene class]]) {
 
-        if (windowScene.activationState !=
-            UISceneActivationStateForegroundActive) {
+                continue;
+            }
 
-            continue;
-        }
+            UIWindowScene *windowScene =
+                (UIWindowScene *)scene;
 
-        for (UIWindow *window in windowScene.windows) {
+            for (UIWindow *window in
+                 windowScene.windows) {
 
-            if (window.isKeyWindow) {
-                return window;
+                if (window != nil) {
+                    [result addObject:window];
+                }
             }
         }
     }
 
-    for (UIScene *scene in application.connectedScenes) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
-        if (![scene isKindOfClass:[UIWindowScene class]]) {
-            continue;
+    for (UIWindow *window in
+         application.windows) {
+
+        if (window != nil &&
+            ![result containsObject:window]) {
+
+            [result addObject:window];
         }
+    }
 
-        UIWindowScene *windowScene =
-            (UIWindowScene *)scene;
+#pragma clang diagnostic pop
 
-        for (UIWindow *window in windowScene.windows) {
+    return result;
+}
 
-            if (!window.hidden &&
-                window.alpha > 0.0) {
+- (UIWindow *)bestWindow {
 
-                return window;
-            }
+    NSArray<UIWindow *> *windows =
+        [self allWindows];
+
+    for (UIWindow *window in windows) {
+
+        if (window.isKeyWindow &&
+            !window.hidden &&
+            window.alpha > 0.0) {
+
+            return window;
+        }
+    }
+
+    for (UIWindow *window in windows) {
+
+        if (!window.hidden &&
+            window.alpha > 0.0 &&
+            window.windowLevel ==
+                UIWindowLevelNormal) {
+
+            return window;
+        }
+    }
+
+    for (UIWindow *window in windows) {
+
+        if (!window.hidden &&
+            window.alpha > 0.0) {
+
+            return window;
         }
     }
 
     return nil;
 }
 
-#pragma mark - Floating Button
+#pragma mark - Debug Button
 
-- (void)buildFloatingButton {
+- (void)tryInstallDebugButton {
 
-    UIWindow *window =
-        [self keyWindow];
+    if (_debugButton != nil &&
+        _debugButton.superview != nil) {
 
-    if (window == nil) {
-
-        [[WFLogger sharedLogger]
-            logCategory:WFLogUI
-            message:@"No active window yet"];
+        [_debugButton.superview
+            bringSubviewToFront:_debugButton];
 
         return;
     }
+
+    UIWindow *window =
+        [self bestWindow];
+
+    if (window == nil) {
+
+        NSString *message =
+            [NSString stringWithFormat:
+                @"No usable UIWindow yet, attempt=%ld",
+                (long)_retryCount];
+
+        [[WFLogger sharedLogger]
+            logCategory:WFLogUI
+            message:message];
+
+        return;
+    }
+
+    NSString *windowMessage =
+        [NSString stringWithFormat:
+            @"Installing debug button on window=%@ frame=%@ level=%.1f",
+            window,
+            NSStringFromCGRect(window.frame),
+            window.windowLevel];
+
+    [[WFLogger sharedLogger]
+        logCategory:WFLogUI
+        message:windowMessage];
 
     UIButton *button =
         [UIButton buttonWithType:
@@ -125,66 +306,119 @@
     button.frame =
         CGRectMake(
             20.0,
-            200.0,
-            56.0,
-            56.0
+            180.0,
+            80.0,
+            80.0
         );
 
-    button.layer.cornerRadius =
-        28.0;
-
     button.backgroundColor =
-        [UIColor
-            colorWithRed:0.85
-                   green:0.20
-                    blue:0.20
-                   alpha:0.90];
+        UIColor.redColor;
+
+    button.layer.cornerRadius =
+        40.0;
+
+    button.layer.borderWidth =
+        3.0;
+
+    button.layer.borderColor =
+        UIColor.whiteColor.CGColor;
+
+    button.layer.shadowOpacity =
+        0.8;
+
+    button.layer.shadowRadius =
+        8.0;
+
+    button.layer.shadowOffset =
+        CGSizeMake(0.0, 3.0);
+
+    [button
+        setTitle:@"WF"
+        forState:UIControlStateNormal];
+
+    [button
+        setTitleColor:
+            UIColor.whiteColor
+        forState:
+            UIControlStateNormal];
 
     button.titleLabel.font =
         [UIFont
-            boldSystemFontOfSize:22.0];
-
-    [button
-        setTitle:@"🦊"
-        forState:UIControlStateNormal];
-
-    button.layer.shadowOpacity =
-        0.4;
-
-    button.layer.shadowRadius =
-        4.0;
-
-    button.layer.shadowOffset =
-        CGSizeMake(0.0, 2.0);
+            boldSystemFontOfSize:24.0];
 
     [button
         addTarget:self
-           action:@selector(togglePanel)
+           action:@selector(debugButtonPressed)
  forControlEvents:UIControlEventTouchUpInside];
 
     UIPanGestureRecognizer *pan =
         [[UIPanGestureRecognizer alloc]
             initWithTarget:self
-                    action:@selector(dragButton:)];
+                    action:@selector(dragDebugButton:)];
 
     [button
         addGestureRecognizer:pan];
 
-    [window
-        addSubview:button];
+    [window addSubview:button];
 
-    [window
-        bringSubviewToFront:button];
+    [window bringSubviewToFront:button];
 
-    _floatingButton =
+    _debugButton =
         button;
 
     [[WFLogger sharedLogger]
         logCategory:WFLogUI
-        message:@"Floating button installed"];
+        message:@"DEBUG BUTTON INSTALLED SUCCESSFULLY"];
 }
 
-- (void)dragButton:
+- (void)debugButtonPressed {
+
+    [[WFLogger sharedLogger]
+        logCategory:WFLogUI
+        message:@"DEBUG BUTTON PRESSED"];
+
+    UIWindow *window =
+        [self bestWindow];
+
+    UIViewController *controller =
+        window.rootViewController;
+
+    while (controller.presentedViewController != nil) {
+
+        controller =
+            controller.presentedViewController;
+    }
+
+    if (controller == nil) {
+        return;
+    }
+
+    UIAlertController *alert =
+        [UIAlertController
+            alertControllerWithTitle:
+                @"WolFox"
+                             message:
+                @"واجهة WolFox تعمل ✅"
+                      preferredStyle:
+                UIAlertControllerStyleAlert];
+
+    [alert
+        addAction:
+            [UIAlertAction
+                actionWithTitle:@"OK"
+                          style:
+                    UIAlertActionStyleDefault
+                        handler:nil]];
+
+    [controller
+        presentViewController:alert
+                     animated:YES
+                   completion:nil];
+}
+
+#pragma mark - Drag
+
+- (void)dragDebugButton:
     (UIPanGestureRecognizer *)pan {
 
     UIView *button =
@@ -213,17 +447,22 @@
         translation.y;
 
     CGFloat halfWidth =
-        CGRectGetWidth(button.bounds) / 2.0;
+        CGRectGetWidth(
+            button.bounds
+        ) / 2.0;
 
     CGFloat halfHeight =
-        CGRectGetHeight(button.bounds) / 2.0;
+        CGRectGetHeight(
+            button.bounds
+        ) / 2.0;
 
     center.x =
         MAX(
             halfWidth,
             MIN(
-                CGRectGetWidth(container.bounds) -
-                halfWidth,
+                CGRectGetWidth(
+                    container.bounds
+                ) - halfWidth,
                 center.x
             )
         );
@@ -232,8 +471,9 @@
         MAX(
             halfHeight,
             MIN(
-                CGRectGetHeight(container.bounds) -
-                halfHeight,
+                CGRectGetHeight(
+                    container.bounds
+                ) - halfHeight,
                 center.y
             )
         );
@@ -242,490 +482,10 @@
         center;
 
     [pan
-        setTranslation:CGPointZero
-                inView:container];
-}
-
-#pragma mark - Panel
-
-- (void)togglePanel {
-
-    if (_panel != nil) {
-
-        [self closePanel];
-        return;
-    }
-
-    [self buildPanel];
-}
-
-- (void)buildPanel {
-
-    UIWindow *window =
-        [self keyWindow];
-
-    if (window == nil) {
-        return;
-    }
-
-    CGFloat width =
-        CGRectGetWidth(window.bounds);
-
-    CGFloat panelWidth =
-        MAX(280.0, width - 40.0);
-
-    UIView *panel =
-        [[UIView alloc]
-            initWithFrame:
-                CGRectMake(
-                    20.0,
-                    120.0,
-                    panelWidth,
-                    420.0
-                )];
-
-    panel.backgroundColor =
-        [UIColor
-            colorWithRed:0.10
-                   green:0.10
-                    blue:0.12
-                   alpha:0.97];
-
-    panel.layer.cornerRadius =
-        16.0;
-
-    panel.layer.borderColor =
-        [UIColor
-            colorWithRed:0.85
-                   green:0.20
-                    blue:0.20
-                   alpha:1.0]
-            .CGColor;
-
-    panel.layer.borderWidth =
-        1.5;
-
-    UILabel *title =
-        [[UILabel alloc]
-            initWithFrame:
-                CGRectMake(
-                    0.0,
-                    16.0,
-                    panel.bounds.size.width,
-                    30.0
-                )];
-
-    title.text =
-        @"WolFox Control";
-
-    title.textColor =
-        UIColor.whiteColor;
-
-    title.textAlignment =
-        NSTextAlignmentCenter;
-
-    title.font =
-        [UIFont
-            boldSystemFontOfSize:18.0];
-
-    [panel
-        addSubview:title];
-
-    _statusLabel =
-        [[UILabel alloc]
-            initWithFrame:
-                CGRectMake(
-                    16.0,
-                    52.0,
-                    panel.bounds.size.width - 32.0,
-                    44.0
-                )];
-
-    _statusLabel.textColor =
-        [UIColor lightGrayColor];
-
-    _statusLabel.font =
-        [UIFont
-            systemFontOfSize:12.0];
-
-    _statusLabel.numberOfLines =
-        2;
-
-    _statusLabel.textAlignment =
-        NSTextAlignmentCenter;
-
-    [panel
-        addSubview:_statusLabel];
-
-    _latField =
-        [self
-            fieldAtY:110.0
-            inPanel:panel
-        placeholder:@"Latitude (24.7136)"];
-
-    _lonField =
-        [self
-            fieldAtY:168.0
-            inPanel:panel
-        placeholder:@"Longitude (46.6753)"];
-
-    [self
-        buttonAtY:230.0
-          inPanel:panel
-            title:@"📍 تفعيل الموقع الثابت"
-           action:@selector(applyStatic)];
-
-    [self
-        buttonAtY:288.0
-          inPanel:panel
-            title:@"↩️ استعادة الموقع الحقيقي"
-           action:@selector(restoreDefault)];
-
-    UIButton *close =
-        [UIButton
-            buttonWithType:
-                UIButtonTypeSystem];
-
-    close.frame =
-        CGRectMake(
-            panel.bounds.size.width - 90.0,
-            12.0,
-            80.0,
-            34.0
-        );
-
-    [close
-        setTitle:@"✕"
-        forState:UIControlStateNormal];
-
-    close.tintColor =
-        UIColor.whiteColor;
-
-    [close
-        addTarget:self
-           action:@selector(closePanel)
- forControlEvents:UIControlEventTouchUpInside];
-
-    [panel
-        addSubview:close];
-
-    [window
-        addSubview:panel];
-
-    [window
-        bringSubviewToFront:panel];
-
-    if (_floatingButton != nil) {
-        [window
-            bringSubviewToFront:
-                _floatingButton];
-    }
-
-    _panel =
-        panel;
-
-    [self refreshStatus];
-}
-
-- (UITextField *)fieldAtY:
-    (CGFloat)y
-                    inPanel:
-    (UIView *)panel
-                placeholder:
-    (NSString *)placeholder {
-
-    UITextField *field =
-        [[UITextField alloc]
-            initWithFrame:
-                CGRectMake(
-                    16.0,
-                    y,
-                    panel.bounds.size.width - 32.0,
-                    44.0
-                )];
-
-    field.backgroundColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.08];
-
-    field.textColor =
-        UIColor.whiteColor;
-
-    field.keyboardType =
-        UIKeyboardTypeNumbersAndPunctuation;
-
-    field.textAlignment =
-        NSTextAlignmentCenter;
-
-    field.layer.cornerRadius =
-        8.0;
-
-    field.autocorrectionType =
-        UITextAutocorrectionTypeNo;
-
-    field.autocapitalizationType =
-        UITextAutocapitalizationTypeNone;
-
-    field.placeholder =
-        placeholder;
-
-    field.attributedPlaceholder =
-        [[NSAttributedString alloc]
-            initWithString:
-                placeholder ?: @""
-            attributes:@{
-                NSForegroundColorAttributeName:
-                    [UIColor
-                        colorWithWhite:1.0
-                                 alpha:0.35]
-            }];
-
-    [panel
-        addSubview:field];
-
-    return field;
-}
-
-- (void)buttonAtY:
-    (CGFloat)y
-          inPanel:
-    (UIView *)panel
-            title:
-    (NSString *)title
-           action:
-    (SEL)action {
-
-    UIButton *button =
-        [UIButton
-            buttonWithType:
-                UIButtonTypeSystem];
-
-    button.frame =
-        CGRectMake(
-            16.0,
-            y,
-            panel.bounds.size.width - 32.0,
-            46.0
-        );
-
-    button.backgroundColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.10];
-
-    button.layer.cornerRadius =
-        10.0;
-
-    button.tintColor =
-        UIColor.whiteColor;
-
-    button.titleLabel.font =
-        [UIFont
-            boldSystemFontOfSize:14.0];
-
-    [button
-        setTitle:title
-        forState:UIControlStateNormal];
-
-    [button
-        addTarget:self
-           action:action
- forControlEvents:UIControlEventTouchUpInside];
-
-    [panel
-        addSubview:button];
-}
-
-- (void)refreshStatus {
-
-    if (_statusLabel == nil) {
-        return;
-    }
-
-    WFRuntimeState *state =
-        [WFRuntimeState sharedState];
-
-    if (state.locationEnabled) {
-
-        _statusLabel.text =
-            [NSString
-                stringWithFormat:
-                    @"الحالة: مفعّل (%.4f, %.4f)\nآخر إجراء: %@",
-                    state.currentLatitude,
-                    state.currentLongitude,
-                    state.lastAction ?: @""];
-
-    } else {
-
-        _statusLabel.text =
-            [NSString
-                stringWithFormat:
-                    @"الحالة: غير مفعّل (موقع حقيقي)\nآخر إجراء: %@",
-                    state.lastAction ?: @""];
-    }
-}
-
-#pragma mark - Actions
-
-- (void)applyStatic {
-
-    NSString *latText =
-        [_latField.text
-            stringByTrimmingCharactersInSet:
-                [NSCharacterSet
-                    whitespaceAndNewlineCharacterSet]];
-
-    NSString *lonText =
-        [_lonField.text
-            stringByTrimmingCharactersInSet:
-                [NSCharacterSet
-                    whitespaceAndNewlineCharacterSet]];
-
-    if (latText.length == 0 ||
-        lonText.length == 0) {
-
-        [self
-            showAlertWithTitle:@"خطأ"
-                        message:@"أدخل خط العرض وخط الطول."];
-
-        return;
-    }
-
-    double latitude =
-        [latText doubleValue];
-
-    double longitude =
-        [lonText doubleValue];
-
-    WFError *error =
-        [[WFAppManager sharedManager]
-            activateStaticLocationWithLatitude:
-                latitude
-            longitude:
-                longitude];
-
-    if (![error isSuccess]) {
-
-        [self
-            showAlertWithTitle:@"خطأ"
-                        message:
-                            error.humanReadableMessage
-                            ?: @"Unknown error"];
-    }
-
-    [self refreshStatus];
-}
-
-- (void)restoreDefault {
-
-    [[WFAppManager sharedManager]
-        restoreDefaultLocation];
-
-    [self refreshStatus];
-}
-
-- (UIViewController *)topViewController {
-
-    UIWindow *window =
-        [self keyWindow];
-
-    UIViewController *controller =
-        window.rootViewController;
-
-    while (controller != nil) {
-
-        if (controller.presentedViewController != nil) {
-
-            controller =
-                controller.presentedViewController;
-
-            continue;
-        }
-
-        if ([controller
-                isKindOfClass:
-                    [UINavigationController class]]) {
-
-            controller =
-                ((UINavigationController *)controller)
-                    .visibleViewController;
-
-            continue;
-        }
-
-        if ([controller
-                isKindOfClass:
-                    [UITabBarController class]]) {
-
-            controller =
-                ((UITabBarController *)controller)
-                    .selectedViewController;
-
-            continue;
-        }
-
-        break;
-    }
-
-    return controller;
-}
-
-- (void)showAlertWithTitle:
-    (NSString *)title
-                  message:
-    (NSString *)message {
-
-    UIViewController *controller =
-        [self topViewController];
-
-    if (controller == nil) {
-        return;
-    }
-
-    UIAlertController *alert =
-        [UIAlertController
-            alertControllerWithTitle:title
-                             message:message
-                      preferredStyle:
-                          UIAlertControllerStyleAlert];
-
-    [alert
-        addAction:
-            [UIAlertAction
-                actionWithTitle:@"حسناً"
-                          style:
-                              UIAlertActionStyleDefault
-                        handler:nil]];
-
-    [controller
-        presentViewController:alert
-                     animated:YES
-                   completion:nil];
-}
-
-- (void)closePanel {
-
-    [_latField
-        resignFirstResponder];
-
-    [_lonField
-        resignFirstResponder];
-
-    [_panel
-        removeFromSuperview];
-
-    _panel =
-        nil;
-
-    _latField =
-        nil;
-
-    _lonField =
-        nil;
-
-    _statusLabel =
-        nil;
+        setTranslation:
+            CGPointZero
+              inView:
+            container];
 }
 
 @end
