@@ -3,12 +3,28 @@
 
 #import <UIKit/UIKit.h>
 
-#pragma mark - WFUIController
+@interface WFOverlayViewController : UIViewController
+@end
+
+@implementation WFOverlayViewController
+
+- (void)loadView {
+
+    UIView *view =
+        [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
+
+    view.backgroundColor =
+        UIColor.clearColor;
+
+    self.view = view;
+}
+
+@end
+
 
 @implementation WFUIController {
-    UIButton *_debugButton;
-    dispatch_source_t _retryTimer;
-    NSInteger _retryCount;
+    UIWindow *_overlayWindow;
+    UIButton *_button;
 }
 
 + (instancetype)sharedController {
@@ -23,281 +39,181 @@
     return instance;
 }
 
+#pragma mark - FORCE AUTO START
+
++ (void)load {
+
+    NSLog(@"[WolFox] WFUIController +load FIRED");
+
+    dispatch_after(
+        dispatch_time(
+            DISPATCH_TIME_NOW,
+            (int64_t)(2.0 * NSEC_PER_SEC)
+        ),
+        dispatch_get_main_queue(),
+        ^{
+
+        NSLog(@"[WolFox] Starting FORCE UI");
+
+        [[WFUIController sharedController]
+            installWhenReady];
+    });
+}
+
 #pragma mark - Install
 
 - (void)installWhenReady {
 
-    [[WFLogger sharedLogger]
-        logCategory:WFLogUI
-        message:@"WFUIController installWhenReady called"];
-
-    [[NSNotificationCenter defaultCenter]
-        addObserver:self
-           selector:@selector(applicationDidBecomeActive:)
-               name:UIApplicationDidBecomeActiveNotification
-             object:nil];
-
-    [[NSNotificationCenter defaultCenter]
-        addObserver:self
-           selector:@selector(windowDidBecomeVisible:)
-               name:UIWindowDidBecomeVisibleNotification
-             object:nil];
+    NSLog(@"[WolFox] installWhenReady");
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self startRetryLoop];
+
+        [self installOverlay];
     });
 }
 
-#pragma mark - Notifications
+#pragma mark - Scene
 
-- (void)applicationDidBecomeActive:
-    (NSNotification *)notification {
-
-    (void)notification;
-
-    [[WFLogger sharedLogger]
-        logCategory:WFLogUI
-        message:@"UIApplicationDidBecomeActiveNotification received"];
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self tryInstallDebugButton];
-    });
-}
-
-- (void)windowDidBecomeVisible:
-    (NSNotification *)notification {
-
-    UIWindow *window =
-        [notification.object isKindOfClass:[UIWindow class]]
-            ? (UIWindow *)notification.object
-            : nil;
-
-    NSString *message =
-        [NSString stringWithFormat:
-            @"UIWindowDidBecomeVisibleNotification received window=%@",
-            window];
-
-    [[WFLogger sharedLogger]
-        logCategory:WFLogUI
-        message:message];
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self tryInstallDebugButton];
-    });
-}
-
-#pragma mark - Retry
-
-- (void)startRetryLoop {
-
-    if (_retryTimer != nil) {
-        return;
-    }
-
-    _retryCount = 0;
-
-    dispatch_queue_t queue =
-        dispatch_get_main_queue();
-
-    _retryTimer =
-        dispatch_source_create(
-            DISPATCH_SOURCE_TYPE_TIMER,
-            0,
-            0,
-            queue
-        );
-
-    uint64_t interval =
-        (uint64_t)(0.5 * NSEC_PER_SEC);
-
-    dispatch_source_set_timer(
-        _retryTimer,
-        dispatch_time(
-            DISPATCH_TIME_NOW,
-            0
-        ),
-        interval,
-        (uint64_t)(0.05 * NSEC_PER_SEC)
-    );
-
-    __weak WFUIController *weakSelf =
-        self;
-
-    dispatch_source_set_event_handler(
-        _retryTimer,
-        ^{
-
-        WFUIController *strongSelf =
-            weakSelf;
-
-        if (strongSelf == nil) {
-            return;
-        }
-
-        strongSelf->_retryCount += 1;
-
-        [strongSelf tryInstallDebugButton];
-
-        if (strongSelf->_debugButton != nil ||
-            strongSelf->_retryCount >= 40) {
-
-            [strongSelf stopRetryLoop];
-        }
-    });
-
-    dispatch_resume(_retryTimer);
-
-    [[WFLogger sharedLogger]
-        logCategory:WFLogUI
-        message:@"UI retry loop started"];
-}
-
-- (void)stopRetryLoop {
-
-    if (_retryTimer == nil) {
-        return;
-    }
-
-    dispatch_source_cancel(_retryTimer);
-
-    _retryTimer = nil;
-
-    [[WFLogger sharedLogger]
-        logCategory:WFLogUI
-        message:@"UI retry loop stopped"];
-}
-
-#pragma mark - Window Discovery
-
-- (NSArray<UIWindow *> *)allWindows {
-
-    NSMutableArray<UIWindow *> *result =
-        [NSMutableArray array];
+- (UIWindowScene *)activeWindowScene
+    API_AVAILABLE(ios(13.0)) {
 
     UIApplication *application =
-        [UIApplication sharedApplication];
+        UIApplication.sharedApplication;
 
-    if (@available(iOS 13.0, *)) {
+    for (UIScene *scene in
+         application.connectedScenes) {
 
-        for (UIScene *scene in
-             application.connectedScenes) {
+        if (![scene
+                isKindOfClass:
+                    UIWindowScene.class]) {
 
-            if (![scene
-                    isKindOfClass:
-                        [UIWindowScene class]]) {
+            continue;
+        }
 
-                continue;
-            }
+        UIWindowScene *windowScene =
+            (UIWindowScene *)scene;
 
-            UIWindowScene *windowScene =
-                (UIWindowScene *)scene;
+        if (windowScene.activationState ==
+                UISceneActivationStateForegroundActive ||
+            windowScene.activationState ==
+                UISceneActivationStateForegroundInactive) {
 
-            for (UIWindow *window in
-                 windowScene.windows) {
-
-                if (window != nil) {
-                    [result addObject:window];
-                }
-            }
+            return windowScene;
         }
     }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    for (UIScene *scene in
+         application.connectedScenes) {
 
-    for (UIWindow *window in
-         application.windows) {
+        if ([scene
+                isKindOfClass:
+                    UIWindowScene.class]) {
 
-        if (window != nil &&
-            ![result containsObject:window]) {
-
-            [result addObject:window];
-        }
-    }
-
-#pragma clang diagnostic pop
-
-    return result;
-}
-
-- (UIWindow *)bestWindow {
-
-    NSArray<UIWindow *> *windows =
-        [self allWindows];
-
-    for (UIWindow *window in windows) {
-
-        if (window.isKeyWindow &&
-            !window.hidden &&
-            window.alpha > 0.0) {
-
-            return window;
-        }
-    }
-
-    for (UIWindow *window in windows) {
-
-        if (!window.hidden &&
-            window.alpha > 0.0 &&
-            window.windowLevel ==
-                UIWindowLevelNormal) {
-
-            return window;
-        }
-    }
-
-    for (UIWindow *window in windows) {
-
-        if (!window.hidden &&
-            window.alpha > 0.0) {
-
-            return window;
+            return (UIWindowScene *)scene;
         }
     }
 
     return nil;
 }
 
-#pragma mark - Debug Button
+#pragma mark - Overlay
 
-- (void)tryInstallDebugButton {
+- (void)installOverlay {
 
-    if (_debugButton != nil &&
-        _debugButton.superview != nil) {
+    if (_overlayWindow != nil) {
 
-        [_debugButton.superview
-            bringSubviewToFront:_debugButton];
+        _overlayWindow.hidden = NO;
 
-        return;
-    }
-
-    UIWindow *window =
-        [self bestWindow];
-
-    if (window == nil) {
-
-        NSString *message =
-            [NSString stringWithFormat:
-                @"No usable UIWindow yet, attempt=%ld",
-                (long)_retryCount];
-
-        [[WFLogger sharedLogger]
-            logCategory:WFLogUI
-            message:message];
+        NSLog(@"[WolFox] Overlay already exists");
 
         return;
     }
 
-    NSString *windowMessage =
-        [NSString stringWithFormat:
-            @"Installing debug button on window=%@ frame=%@ level=%.1f",
-            window,
-            NSStringFromCGRect(window.frame),
-            window.windowLevel];
+    NSLog(@"[WolFox] Creating overlay");
 
-    [[WFLogger sharedLogger]
-        logCategory:WFLogUI
-        message:windowMessage];
+    UIWindow *window = nil;
+
+    if (@available(iOS 13.0, *)) {
+
+        UIWindowScene *scene =
+            [self activeWindowScene];
+
+        if (scene == nil) {
+
+            NSLog(@"[WolFox] NO WINDOW SCENE");
+
+            [self retryInstallation];
+
+            return;
+        }
+
+        window =
+            [[UIWindow alloc]
+                initWithWindowScene:scene];
+
+    } else {
+
+        window =
+            [[UIWindow alloc]
+                initWithFrame:
+                    UIScreen.mainScreen.bounds];
+    }
+
+    window.frame =
+        UIScreen.mainScreen.bounds;
+
+    window.backgroundColor =
+        UIColor.clearColor;
+
+    window.windowLevel =
+        UIWindowLevelAlert + 1000.0;
+
+    WFOverlayViewController *controller =
+        [[WFOverlayViewController alloc] init];
+
+    window.rootViewController =
+        controller;
+
+    window.hidden = NO;
+
+    _overlayWindow =
+        window;
+
+    NSLog(@"[WolFox] Overlay window created");
+
+    [self createButtonOnView:
+        controller.view];
+}
+
+#pragma mark - Retry
+
+- (void)retryInstallation {
+
+    dispatch_after(
+        dispatch_time(
+            DISPATCH_TIME_NOW,
+            (int64_t)(1.0 * NSEC_PER_SEC)
+        ),
+        dispatch_get_main_queue(),
+        ^{
+
+        if (self->_overlayWindow == nil) {
+
+            NSLog(@"[WolFox] Retrying overlay installation");
+
+            [self installOverlay];
+        }
+    });
+}
+
+#pragma mark - Button
+
+- (void)createButtonOnView:
+    (UIView *)view {
+
+    if (_button != nil) {
+        return;
+    }
 
     UIButton *button =
         [UIButton buttonWithType:
@@ -307,30 +223,33 @@
         CGRectMake(
             20.0,
             180.0,
-            80.0,
-            80.0
+            90.0,
+            90.0
         );
 
     button.backgroundColor =
         UIColor.redColor;
 
     button.layer.cornerRadius =
-        40.0;
+        45.0;
 
     button.layer.borderWidth =
-        3.0;
+        4.0;
 
     button.layer.borderColor =
         UIColor.whiteColor.CGColor;
 
     button.layer.shadowOpacity =
-        0.8;
+        0.9;
 
     button.layer.shadowRadius =
-        8.0;
+        10.0;
 
     button.layer.shadowOffset =
-        CGSizeMake(0.0, 3.0);
+        CGSizeMake(
+            0.0,
+            4.0
+        );
 
     [button
         setTitle:@"WF"
@@ -344,61 +263,44 @@
 
     button.titleLabel.font =
         [UIFont
-            boldSystemFontOfSize:24.0];
+            boldSystemFontOfSize:
+                26.0];
 
     [button
         addTarget:self
-           action:@selector(debugButtonPressed)
+           action:@selector(buttonPressed)
  forControlEvents:UIControlEventTouchUpInside];
 
     UIPanGestureRecognizer *pan =
         [[UIPanGestureRecognizer alloc]
             initWithTarget:self
-                    action:@selector(dragDebugButton:)];
+                    action:@selector(handlePan:)];
 
     [button
         addGestureRecognizer:pan];
 
-    [window addSubview:button];
+    [view addSubview:button];
 
-    [window bringSubviewToFront:button];
+    [view bringSubviewToFront:button];
 
-    _debugButton =
+    _button =
         button;
 
-    [[WFLogger sharedLogger]
-        logCategory:WFLogUI
-        message:@"DEBUG BUTTON INSTALLED SUCCESSFULLY"];
+    NSLog(@"[WolFox] ***** WF BUTTON CREATED *****");
 }
 
-- (void)debugButtonPressed {
+#pragma mark - Button Action
 
-    [[WFLogger sharedLogger]
-        logCategory:WFLogUI
-        message:@"DEBUG BUTTON PRESSED"];
+- (void)buttonPressed {
 
-    UIWindow *window =
-        [self bestWindow];
-
-    UIViewController *controller =
-        window.rootViewController;
-
-    while (controller.presentedViewController != nil) {
-
-        controller =
-            controller.presentedViewController;
-    }
-
-    if (controller == nil) {
-        return;
-    }
+    NSLog(@"[WolFox] WF BUTTON PRESSED");
 
     UIAlertController *alert =
         [UIAlertController
             alertControllerWithTitle:
                 @"WolFox"
                              message:
-                @"واجهة WolFox تعمل ✅"
+                @"WolFox.dylib loaded successfully ✅"
                       preferredStyle:
                 UIAlertControllerStyleAlert];
 
@@ -410,7 +312,7 @@
                     UIAlertActionStyleDefault
                         handler:nil]];
 
-    [controller
+    [_overlayWindow.rootViewController
         presentViewController:alert
                      animated:YES
                    completion:nil];
@@ -418,24 +320,24 @@
 
 #pragma mark - Drag
 
-- (void)dragDebugButton:
-    (UIPanGestureRecognizer *)pan {
+- (void)handlePan:
+    (UIPanGestureRecognizer *)gesture {
 
     UIView *button =
-        pan.view;
+        gesture.view;
 
-    UIView *container =
+    UIView *parent =
         button.superview;
 
     if (button == nil ||
-        container == nil) {
+        parent == nil) {
 
         return;
     }
 
     CGPoint translation =
-        [pan
-            translationInView:container];
+        [gesture
+            translationInView:parent];
 
     CGPoint center =
         button.center;
@@ -456,13 +358,21 @@
             button.bounds
         ) / 2.0;
 
+    CGFloat width =
+        CGRectGetWidth(
+            parent.bounds
+        );
+
+    CGFloat height =
+        CGRectGetHeight(
+            parent.bounds
+        );
+
     center.x =
         MAX(
             halfWidth,
             MIN(
-                CGRectGetWidth(
-                    container.bounds
-                ) - halfWidth,
+                width - halfWidth,
                 center.x
             )
         );
@@ -471,9 +381,7 @@
         MAX(
             halfHeight,
             MIN(
-                CGRectGetHeight(
-                    container.bounds
-                ) - halfHeight,
+                height - halfHeight,
                 center.y
             )
         );
@@ -481,11 +389,11 @@
     button.center =
         center;
 
-    [pan
+    [gesture
         setTranslation:
             CGPointZero
               inView:
-            container];
+            parent];
 }
 
 @end
