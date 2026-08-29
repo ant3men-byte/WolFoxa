@@ -91,16 +91,59 @@ static CLLocation *WolFox_buildFakeLocation(WFRuntimeState *state) {
 }
 
 - (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations {
+
     WFRuntimeState *state = [WFRuntimeState sharedState];
+
+    WFAuditLogNSString(
+        @"DELEGATE",
+        [NSString stringWithFormat:
+            @"didUpdateLocations ENTERED | incomingCount=%lu | locationEnabled=%@",
+            (unsigned long)locations.count,
+            state.locationEnabled ? @"YES" : @"NO"]
+    );
+
     id delegate = self.originalDelegate;
-    if (delegate == nil) return;
+
+    if (delegate == nil) {
+
+        WFAuditLogNSString(
+            @"DELEGATE",
+            @"didUpdateLocations | originalDelegate=nil | callback dropped"
+        );
+
+        return;
+    }
+
     if (state.locationEnabled) {
+
         CLLocation *fake = WolFox_buildFakeLocation(state);
+
+        WFAuditLogIntercept(
+            @"delegate.didUpdateLocations",
+            @"FAKE"
+        );
+
+        WFAuditLogLocation(
+            @"delegate.didUpdateLocations.fake",
+            fake
+        );
         if ([delegate respondsToSelector:@selector(locationManager:didUpdateLocations:)]) {
             [(id<CLLocationManagerDelegate>)delegate locationManager:manager didUpdateLocations:@[ fake ]];
         }
         return;
     }
+    WFAuditLogIntercept(
+        @"delegate.didUpdateLocations",
+        @"ORIGINAL"
+    );
+
+    if (locations.count > 0) {
+        WFAuditLogLocation(
+            @"delegate.didUpdateLocations.original",
+            locations.lastObject
+        );
+    }
+
     if ([delegate respondsToSelector:@selector(locationManager:didUpdateLocations:)]) {
         [(id<CLLocationManagerDelegate>)delegate locationManager:manager didUpdateLocations:locations];
     }
@@ -156,6 +199,15 @@ static void WolFox_attachProxy(id manager) {
         objc_setAssociatedObject(manager, kWolFoxProxyKey, proxy, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if (orig_setDelegate != NULL) orig_setDelegate(manager, @selector(setDelegate:), proxy);
         [[WFLogger sharedLogger] logCategory:WFLogLocation message:@"Delegate proxy attached"];
+
+        WFAuditLogNSString(
+            @"DELEGATE",
+            [NSString stringWithFormat:
+                @"Proxy attached | originalDelegate=%@",
+                currentDelegate
+                    ? (NSStringFromClass([currentDelegate class]) ?: @"unknown")
+                    : @"nil"]
+        );
     }
     @catch (NSException *exception) {
         [[WFLogger sharedLogger] logCategory:WFLogLocation message:[NSString stringWithFormat:@"Proxy attach failed: %@", exception]];
@@ -175,6 +227,11 @@ static void WolFox_detachProxy(id manager) {
             if (orig_setDelegate != NULL) orig_setDelegate(manager, @selector(setDelegate:), original);
             objc_setAssociatedObject(manager, kWolFoxProxyKey, nil, OBJC_ASSOCIATION_ASSIGN);
             [[WFLogger sharedLogger] logCategory:WFLogLocation message:@"Delegate proxy detached"];
+
+            WFAuditLogNSString(
+                @"DELEGATE",
+                @"Proxy detached"
+            );
         }
     }
     @catch (NSException *exception) {
@@ -185,10 +242,60 @@ static void WolFox_detachProxy(id manager) {
 #pragma mark - Hooked Methods
 
 static CLLocation *WolFox_hooked_location(id self, SEL _cmd) {
+
     @autoreleasepool {
-        WFRuntimeState *state = [WFRuntimeState sharedState];
-        if (state.locationEnabled) return WolFox_buildFakeLocation(state);
-        if (orig_location != NULL) return orig_location(self, _cmd);
+
+        WFRuntimeState *state =
+            [WFRuntimeState sharedState];
+
+        WFAuditLogNSString(
+            @"HOOK",
+            [NSString stringWithFormat:
+                @"CLLocationManager.location ENTERED | locationEnabled=%@",
+                state.locationEnabled ? @"YES" : @"NO"]
+        );
+
+        if (state.locationEnabled) {
+
+            CLLocation *fake =
+                WolFox_buildFakeLocation(state);
+
+            WFAuditLogIntercept(
+                @"CLLocationManager.location",
+                @"FAKE"
+            );
+
+            WFAuditLogLocation(
+                @"CLLocationManager.location.fake",
+                fake
+            );
+
+            return fake;
+        }
+
+        if (orig_location != NULL) {
+
+            CLLocation *original =
+                orig_location(self, _cmd);
+
+            WFAuditLogIntercept(
+                @"CLLocationManager.location",
+                @"ORIGINAL"
+            );
+
+            WFAuditLogLocation(
+                @"CLLocationManager.location.original",
+                original
+            );
+
+            return original;
+        }
+
+        WFAuditLogIntercept(
+            @"CLLocationManager.location",
+            @"NO_ORIGINAL_IMPLEMENTATION"
+        );
+
         return nil;
     }
 }
@@ -203,6 +310,15 @@ static id WolFox_hooked_delegate(id self, SEL _cmd) {
 }
 
 static void WolFox_hooked_setDelegate(id self, SEL _cmd, id delegate) {
+
+    WFAuditLogNSString(
+        @"DELEGATE",
+        [NSString stringWithFormat:
+            @"setDelegate ENTERED | manager=%@ | delegate=%@",
+            NSStringFromClass([self class]) ?: @"nil",
+            delegate ? (NSStringFromClass([delegate class]) ?: @"unknown") : @"nil"]
+    );
+
     if (delegate == nil) {
         WolFox_detachProxy(self);
         if (orig_setDelegate != NULL) orig_setDelegate(self, _cmd, nil);
@@ -223,9 +339,25 @@ static void WolFox_hooked_setDelegate(id self, SEL _cmd, id delegate) {
 }
 
 static void WolFox_hooked_startUpdatingLocation(id self, SEL _cmd) {
+
     @autoreleasepool {
-        WFRuntimeState *state = [WFRuntimeState sharedState];
+
+        WFRuntimeState *state =
+            [WFRuntimeState sharedState];
+
+        WFAuditLogNSString(
+            @"HOOK",
+            [NSString stringWithFormat:
+                @"startUpdatingLocation ENTERED | locationEnabled=%@",
+                state.locationEnabled ? @"YES" : @"NO"]
+        );
+
         if (state.locationEnabled) {
+
+            WFAuditLogIntercept(
+                @"startUpdatingLocation",
+                @"FAKE_MODE"
+            );
             [[WFLogger sharedLogger] logCategory:WFLogLocation message:@"startUpdatingLocation intercepted"];
             WolFox_attachProxy(self);
             id delegate = WolFox_rawDelegate(self);
@@ -235,18 +367,54 @@ static void WolFox_hooked_startUpdatingLocation(id self, SEL _cmd) {
             }
             return;
         }
-        if (orig_startUpdatingLocation != NULL) orig_startUpdatingLocation(self, _cmd);
+        WFAuditLogIntercept(
+            @"startUpdatingLocation",
+            @"ORIGINAL"
+        );
+
+        if (orig_startUpdatingLocation != NULL) {
+            orig_startUpdatingLocation(self, _cmd);
+        }
     }
 }
 
 static void WolFox_hooked_stopUpdatingLocation(id self, SEL _cmd) {
-    if (orig_stopUpdatingLocation != NULL) orig_stopUpdatingLocation(self, _cmd);
+
+    WFAuditLogNSString(
+        @"HOOK",
+        @"stopUpdatingLocation ENTERED"
+    );
+
+    WFAuditLogIntercept(
+        @"stopUpdatingLocation",
+        @"ORIGINAL"
+    );
+
+    if (orig_stopUpdatingLocation != NULL) {
+        orig_stopUpdatingLocation(self, _cmd);
+    }
 }
 
 static void WolFox_hooked_requestLocation(id self, SEL _cmd) {
+
     @autoreleasepool {
-        WFRuntimeState *state = [WFRuntimeState sharedState];
+
+        WFRuntimeState *state =
+            [WFRuntimeState sharedState];
+
+        WFAuditLogNSString(
+            @"HOOK",
+            [NSString stringWithFormat:
+                @"requestLocation ENTERED | locationEnabled=%@",
+                state.locationEnabled ? @"YES" : @"NO"]
+        );
+
         if (state.locationEnabled) {
+
+            WFAuditLogIntercept(
+                @"requestLocation",
+                @"FAKE_MODE"
+            );
             [[WFLogger sharedLogger] logCategory:WFLogLocation message:@"requestLocation intercepted"];
             WolFox_attachProxy(self);
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -258,7 +426,14 @@ static void WolFox_hooked_requestLocation(id self, SEL _cmd) {
             });
             return;
         }
-        if (orig_requestLocation != NULL) orig_requestLocation(self, _cmd);
+        WFAuditLogIntercept(
+            @"requestLocation",
+            @"ORIGINAL"
+        );
+
+        if (orig_requestLocation != NULL) {
+            orig_requestLocation(self, _cmd);
+        }
     }
 }
 
@@ -273,6 +448,13 @@ static void WolFox_installHook(Class cls, SEL selector, IMP newImplementation, I
     IMP previous = method_setImplementation(method, newImplementation);
     if (originalStorage != NULL) *originalStorage = previous;
     [[WFLogger sharedLogger] logCategory:WFLogLocation message:[NSString stringWithFormat:@"%@ hook installed", name]];
+
+    WFAuditLogNSString(
+        @"HOOK_INSTALL",
+        [NSString stringWithFormat:
+            @"%@ installed",
+            name ?: @"unknown"]
+    );
 }
 
 static void WolFoxInstallRuntimeHooks(void) {
@@ -290,6 +472,11 @@ static void WolFoxInstallRuntimeHooks(void) {
         WolFox_installHook(managerClass, @selector(stopUpdatingLocation), (IMP)WolFox_hooked_stopUpdatingLocation, (IMP *)&orig_stopUpdatingLocation, @"stopUpdatingLocation");
         WolFox_installHook(managerClass, @selector(requestLocation), (IMP)WolFox_hooked_requestLocation, (IMP *)&orig_requestLocation, @"requestLocation");
         [[WFLogger sharedLogger] logCategory:WFLogLocation message:@"All runtime hooks installed"];
+
+        WFAuditLogNSString(
+            @"HOOK_INSTALL",
+            @"All CLLocationManager runtime hooks installed"
+        );
     });
 }
 
