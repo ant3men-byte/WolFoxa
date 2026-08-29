@@ -2419,7 +2419,19 @@ static void WolFoxStandaloneInit(void) {
 
     @autoreleasepool {
 
+        // Initialize WolFox core
         [[WFAppManager sharedManager]
             initialize];
+
+        // UIKit work must run on the main thread
+        dispatch_async(dispatch_get_main_queue(), ^{
+
+            [[WFLogger sharedLogger]
+                logCategory:WFLogUI
+                message:@"Starting WolFox UI installation"];
+
+            [[WFUIController sharedController]
+                installWhenReady];
+        });
     }
 }
