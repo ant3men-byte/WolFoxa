@@ -8,6 +8,30 @@
 
 #pragma mark - Root
 
+@interface WFOverlayWindow : UIWindow
+@end
+
+@implementation WFOverlayWindow
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+
+    UIView *hit = [super hitTest:point withEvent:event];
+
+    // If the window/root itself is the only hit target, do not consume
+    // the touch. Returning nil here lets the event continue to the
+    // application's normal window underneath WolFox.
+    if (hit == nil ||
+        hit == self ||
+        hit == self.rootViewController.view) {
+        return nil;
+    }
+
+    return hit;
+}
+
+@end
+
+
 @interface WFOverlayPassthroughView : UIView
 @end
 
@@ -114,7 +138,7 @@
         return;
     }
 
-    UIWindow *w = nil;
+    WFOverlayWindow *w = nil;
     if (@available(iOS 13.0, *)) {
         UIWindowScene *scene = [self activeScene];
         if (!scene) {
@@ -124,9 +148,9 @@
             });
             return;
         }
-        w = [[UIWindow alloc] initWithWindowScene:scene];
+        w = [[WFOverlayWindow alloc] initWithWindowScene:scene];
     } else {
-        w = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+        w = [[WFOverlayWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     }
 
     w.frame = UIScreen.mainScreen.bounds;
