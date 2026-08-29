@@ -83,7 +83,6 @@ jobs:
 
       - name: Build Rootful package
         run: |
-          export THEOS_PACKAGE_SCHEME=rootful
           make clean
           make package FINALPACKAGE=1 DEBUG=0
           mkdir -p artifacts
