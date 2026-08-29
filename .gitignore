@@ -1,0 +1,8 @@
+.theos/
+packages/
+obj/
+artifacts/
+tests
+test_output.log
+*.deb
+*.dylib
