@@ -81,6 +81,7 @@ jobs:
 
   theos-build:
     name: Theos Build - Dylib Only
+
     needs:
       - linux-tests
       - validate-config
@@ -134,21 +135,35 @@ jobs:
 
           echo "THEOS=$THEOS"
 
-          echo "Checking Theos:"
+          echo "Checking Theos..."
           test -d "$THEOS"
 
-          echo "Checking iOS toolchain:"
+          echo "Checking iOS toolchain..."
           test -x "$THEOS/toolchain/linux/iphone/bin/clang"
           test -x "$THEOS/toolchain/linux/iphone/bin/clang++"
 
+          echo ""
           echo "clang:"
           "$THEOS/toolchain/linux/iphone/bin/clang" --version
 
+          echo ""
           echo "clang++:"
           "$THEOS/toolchain/linux/iphone/bin/clang++" --version
 
+          echo ""
           echo "Installed SDKs:"
           ls -la "$THEOS/sdks"
+
+
+      - name: Clean project
+        run: |
+          set -e
+
+          unset THEOS_PACKAGE_SCHEME
+
+          echo "Cleaning old build..."
+
+          make clean
 
 
       - name: Build WolFox dylib
@@ -157,64 +172,149 @@ jobs:
 
           unset THEOS_PACKAGE_SCHEME
 
-          echo "Cleaning old build..."
-          make clean
-
           echo "Building WolFox.dylib..."
+
           make FINALPACKAGE=1 DEBUG=0
 
+          echo ""
+          echo "Build completed."
 
-      - name: Locate generated WolFox.dylib
+
+      - name: Show generated files
         run: |
           set -e
 
-          echo "Searching for generated WolFox.dylib..."
+          echo "Searching for WolFox files..."
 
-          find . -type f -name "WolFox.dylib" -print
+          find . \
+            -type f \
+            -name "WolFox*" \
+            -print || true
 
-          DYLIB_PATH="$(find . -type f -name "WolFox.dylib" | head -n1)"
+          echo ""
+          echo "All WolFox.dylib candidates:"
 
-          if [ -z "$DYLIB_PATH" ]; then
-            echo "FAIL: WolFox.dylib not found"
-            exit 1
-          fi
+          find . \
+            -type f \
+            -name "WolFox.dylib" \
+            -exec file {} \; || true
 
-          echo "Found dylib:"
-          echo "$DYLIB_PATH"
+
+      - name: Locate real generated WolFox.dylib
+        run: |
+          set -e
+
+          echo "Searching for real WolFox.dylib..."
 
           mkdir -p artifacts
 
+          REAL_DYLIB=""
+
+          while IFS= read -r candidate; do
+
+            echo ""
+            echo "Checking:"
+            echo "$candidate"
+
+            FILE_INFO="$(file -b "$candidate")"
+
+            echo "$FILE_INFO"
+
+            if echo "$FILE_INFO" \
+              | grep -qi "dynamically linked shared library"; then
+
+              REAL_DYLIB="$candidate"
+              break
+
+            fi
+
+          done < <(
+            find . \
+              -type f \
+              -name "WolFox.dylib" \
+              ! -path "*.dSYM/*"
+          )
+
+          if [ -z "$REAL_DYLIB" ]; then
+
+            echo ""
+            echo "FAIL: real WolFox.dylib not found."
+
+            echo ""
+            echo "Detected candidates:"
+
+            find . \
+              -type f \
+              -name "WolFox.dylib" \
+              -exec file {} \; || true
+
+            exit 1
+          fi
+
+          echo ""
+          echo "REAL DYLIB FOUND:"
+          echo "$REAL_DYLIB"
+
+          echo ""
+          echo "File type:"
+          file "$REAL_DYLIB"
+
           cp -v \
-            "$DYLIB_PATH" \
+            "$REAL_DYLIB" \
             artifacts/WolFox.dylib
 
 
-      - name: Verify Mach-O dylib
+      - name: Verify WolFox dylib
         run: |
           set -e
 
-          echo "File information:"
-          file artifacts/WolFox.dylib
+          echo "Verifying final artifact..."
+
+          test -f artifacts/WolFox.dylib
 
           FILE_INFO="$(file -b artifacts/WolFox.dylib)"
 
+          echo ""
           echo "$FILE_INFO"
 
-          echo "$FILE_INFO" \
-            | grep -qi "dynamically linked shared library" \
-            || {
-              echo "FAIL: WolFox.dylib is not a dynamic library"
-              exit 1
-            }
+          echo ""
 
-          echo "$FILE_INFO" \
-            | grep -qi "arm64" \
-            || {
-              echo "FAIL: WolFox.dylib does not contain arm64"
-              exit 1
-            }
+          if echo "$FILE_INFO" \
+            | grep -qi "dSYM companion file"; then
 
-          echo "WolFox.dylib verification passed."
+            echo "FAIL: selected file is a dSYM companion file"
+            exit 1
+          fi
+
+          if ! echo "$FILE_INFO" \
+            | grep -qi "dynamically linked shared library"; then
+
+            echo "FAIL: WolFox.dylib is not a dynamic library"
+            exit 1
+          fi
+
+          if ! echo "$FILE_INFO" \
+            | grep -qi "arm64"; then
+
+            echo "FAIL: WolFox.dylib does not contain arm64"
+            exit 1
+          fi
+
+          echo ""
+          echo "SUCCESS:"
+          echo "WolFox.dylib is a valid arm64 Mach-O dynamic library."
+
+
+      - name: Show final artifact
+        run: |
+          set -e
+
+          echo "Final artifact:"
+          ls -lh artifacts/WolFox.dylib
+
+          echo ""
+          echo "Mach-O information:"
+          file artifacts/WolFox.dylib
 
 
       - name: Calculate SHA-256 checksum
