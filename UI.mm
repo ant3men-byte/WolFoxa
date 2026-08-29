@@ -8,15 +8,46 @@
 
 #pragma mark - Root
 
+@interface WFOverlayPassthroughView : UIView
+@end
+
+@implementation WFOverlayPassthroughView
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+
+    UIView *hit = [super hitTest:point withEvent:event];
+
+    // If the touch lands only on the transparent full-screen root,
+    // pass it through to the host application below WolFox.
+    if (hit == self) {
+        return nil;
+    }
+
+    // WolFox controls such as the floating button and open panel
+    // continue receiving touches normally.
+    return hit;
+}
+
+@end
+
+
 @interface WFOverlayRootController : UIViewController
 @end
 
 @implementation WFOverlayRootController
+
 - (void)loadView {
-    UIView *v = [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
+
+    WFOverlayPassthroughView *v =
+        [[WFOverlayPassthroughView alloc]
+            initWithFrame:UIScreen.mainScreen.bounds];
+
     v.backgroundColor = UIColor.clearColor;
+    v.userInteractionEnabled = YES;
+
     self.view = v;
 }
+
 @end
 
 #pragma mark - UI
