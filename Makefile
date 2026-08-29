@@ -1,4 +1,4 @@
-TARGET := iphone:clang:14.5:14.0
+TARGET := iphone:clang:latest:15.0
 ARCHS := arm64
 
 include $(THEOS)/makefiles/common.mk
@@ -11,6 +11,6 @@ WolFox_FRAMEWORKS = Foundation UIKit CoreLocation MapKit
 
 WolFox_CFLAGS = -fobjc-arc -std=c++17 -D_USE_MATH_DEFINES
 
-WolFox_LDFLAGS = -Wl,-install_name,@executable_path/WolFox.dylib
+WolFox_LDFLAGS = -Wl,-install_name,WolFox.dylib
 
 include $(THEOS_MAKE_PATH)/library.mk
