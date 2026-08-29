@@ -5,1755 +5,640 @@
 #import <MapKit/MapKit.h>
 #import <CoreLocation/CoreLocation.h>
 
-#pragma mark - Overlay Root
+#pragma mark - Root
 
 @interface WFOverlayRootController : UIViewController
 @end
 
 @implementation WFOverlayRootController
-
 - (void)loadView {
-
-    UIView *view =
-        [[UIView alloc]
-            initWithFrame:UIScreen.mainScreen.bounds];
-
-    view.backgroundColor =
-        UIColor.clearColor;
-
-    self.view = view;
+    UIView *v = [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    v.backgroundColor = UIColor.clearColor;
+    self.view = v;
 }
-
 @end
 
+#pragma mark - UI
 
-#pragma mark - WolFox UI
-
-@interface WFUIController ()
-<
-    MKMapViewDelegate,
-    UISearchBarDelegate,
-    UITableViewDelegate,
-    UITableViewDataSource
->
+@interface WFUIController () <MKMapViewDelegate, UISearchBarDelegate>
 @end
-
 
 @implementation WFUIController {
-
     UIWindow *_overlayWindow;
-
     UIButton *_floatingButton;
-
-    UIView *_mainView;
-    UIView *_sideMenu;
-    UIView *_bottomCard;
-
-    MKMapView *_mapView;
+    UIScrollView *_panel;
+    UIView *_content;
 
     UISearchBar *_searchBar;
-
-    UILabel *_coordinateLabel;
+    MKMapView *_mapView;
+    UILabel *_coordLabel;
     UILabel *_statusLabel;
-    UILabel *_modeLabel;
-
-    UIButton *_menuButton;
-    UIButton *_closeButton;
-    UIButton *_centerButton;
-    UIButton *_mapTypeButton;
-    UIButton *_activateButton;
-    UIButton *_restoreButton;
-
-    UITableView *_menuTable;
+    UISwitch *_locationSwitch;
+    UISwitch *_photoSwitch;
 
     CLLocationCoordinate2D _selectedCoordinate;
-
-    BOOL _hasSelectedCoordinate;
-    BOOL _menuVisible;
+    BOOL _hasCoordinate;
 }
-
-
-#pragma mark - Singleton
 
 + (instancetype)sharedController {
-
-    static WFUIController *instance = nil;
-
+    static WFUIController *obj;
     static dispatch_once_t onceToken;
-
     dispatch_once(&onceToken, ^{
-
-        instance =
-            [[WFUIController alloc] init];
+        obj = [[WFUIController alloc] init];
     });
-
-    return instance;
+    return obj;
 }
-
-
-#pragma mark - Auto Start
 
 + (void)load {
-
-    NSLog(@"[WolFox] UI +load");
-
-    dispatch_after(
-        dispatch_time(
-            DISPATCH_TIME_NOW,
-            (int64_t)(1.5 * NSEC_PER_SEC)
-        ),
-        dispatch_get_main_queue(),
-        ^{
-
-        [[WFUIController sharedController]
-            installWhenReady];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [[WFUIController sharedController] installWhenReady];
     });
 }
 
-
-#pragma mark - Install
-
 - (void)installWhenReady {
-
-    dispatch_async(
-        dispatch_get_main_queue(),
-        ^{
-
+    dispatch_async(dispatch_get_main_queue(), ^{
         [self installOverlay];
     });
 }
 
-
-#pragma mark - Scene
-
-- (UIWindowScene *)activeWindowScene
-    API_AVAILABLE(ios(13.0)) {
-
-    UIApplication *application =
-        UIApplication.sharedApplication;
-
-    for (UIScene *scene in
-         application.connectedScenes) {
-
-        if (![scene
-                isKindOfClass:UIWindowScene.class]) {
-
-            continue;
-        }
-
-        UIWindowScene *windowScene =
-            (UIWindowScene *)scene;
-
-        if (windowScene.activationState ==
-                UISceneActivationStateForegroundActive ||
-            windowScene.activationState ==
-                UISceneActivationStateForegroundInactive) {
-
-            return windowScene;
+- (UIWindowScene *)activeScene API_AVAILABLE(ios(13.0)) {
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        if (scene.activationState == UISceneActivationStateForegroundActive ||
+            scene.activationState == UISceneActivationStateForegroundInactive) {
+            return (UIWindowScene *)scene;
         }
     }
-
-    for (UIScene *scene in
-         application.connectedScenes) {
-
-        if ([scene
-                isKindOfClass:UIWindowScene.class]) {
-
-            return
-                (UIWindowScene *)scene;
-        }
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene isKindOfClass:UIWindowScene.class]) return (UIWindowScene *)scene;
     }
-
     return nil;
 }
 
-
-#pragma mark - Overlay
-
 - (void)installOverlay {
-
-    if (_overlayWindow != nil) {
-
+    if (_overlayWindow) {
         _overlayWindow.hidden = NO;
-
         return;
     }
 
-    UIWindow *window = nil;
-
+    UIWindow *w = nil;
     if (@available(iOS 13.0, *)) {
-
-        UIWindowScene *scene =
-            [self activeWindowScene];
-
-        if (scene == nil) {
-
-            [self retryInstall];
-
+        UIWindowScene *scene = [self activeScene];
+        if (!scene) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC),
+                           dispatch_get_main_queue(), ^{
+                [self installOverlay];
+            });
             return;
         }
-
-        window =
-            [[UIWindow alloc]
-                initWithWindowScene:scene];
-
+        w = [[UIWindow alloc] initWithWindowScene:scene];
     } else {
-
-        window =
-            [[UIWindow alloc]
-                initWithFrame:
-                    UIScreen.mainScreen.bounds];
+        w = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     }
 
-    window.frame =
-        UIScreen.mainScreen.bounds;
+    w.frame = UIScreen.mainScreen.bounds;
+    w.backgroundColor = UIColor.clearColor;
+    w.windowLevel = UIWindowLevelAlert + 1000.0;
 
-    window.backgroundColor =
-        UIColor.clearColor;
+    WFOverlayRootController *root = [[WFOverlayRootController alloc] init];
+    w.rootViewController = root;
+    w.hidden = NO;
+    _overlayWindow = w;
 
-    window.windowLevel =
-        UIWindowLevelAlert + 1000.0;
-
-
-    WFOverlayRootController *root =
-        [[WFOverlayRootController alloc] init];
-
-    window.rootViewController =
-        root;
-
-    window.hidden =
-        NO;
-
-    _overlayWindow =
-        window;
-
-
-    [self buildFloatingButton:
-        root.view];
-
-
-    NSLog(@"[WolFox] overlay ready");
+    [self buildFloatingButton:root.view];
 }
 
+#pragma mark - Helpers
 
-- (void)retryInstall {
-
-    dispatch_after(
-        dispatch_time(
-            DISPATCH_TIME_NOW,
-            (int64_t)(1.0 * NSEC_PER_SEC)
-        ),
-        dispatch_get_main_queue(),
-        ^{
-
-        if (self->_overlayWindow == nil) {
-
-            [self installOverlay];
-        }
-    });
+- (UIColor *)panelColor {
+    return [UIColor colorWithRed:0.105 green:0.11 blue:0.12 alpha:0.985];
 }
 
+- (UIColor *)cardColor {
+    return [UIColor colorWithRed:0.19 green:0.20 blue:0.21 alpha:0.98];
+}
 
-#pragma mark - Floating Button
+- (UILabel *)label:(NSString *)text frame:(CGRect)frame size:(CGFloat)size bold:(BOOL)bold {
+    UILabel *l = [[UILabel alloc] initWithFrame:frame];
+    l.text = text;
+    l.textColor = UIColor.whiteColor;
+    l.font = bold ? [UIFont boldSystemFontOfSize:size] : [UIFont systemFontOfSize:size];
+    return l;
+}
 
-- (void)buildFloatingButton:
-    (UIView *)parent {
+- (UIButton *)button:(NSString *)title frame:(CGRect)frame tint:(UIColor *)tint {
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+    b.frame = frame;
+    b.layer.cornerRadius = 13.0;
+    b.layer.borderWidth = 1.0;
+    b.layer.borderColor = [tint colorWithAlphaComponent:0.65].CGColor;
+    b.backgroundColor = [tint colorWithAlphaComponent:0.23];
+    [b setTitle:title forState:UIControlStateNormal];
+    [b setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    b.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+    return b;
+}
 
-    if (_floatingButton != nil) {
-        return;
-    }
+- (UIView *)card:(CGRect)frame {
+    UIView *v = [[UIView alloc] initWithFrame:frame];
+    v.backgroundColor = [self cardColor];
+    v.layer.cornerRadius = 16.0;
+    v.layer.borderWidth = 1.0;
+    v.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.12].CGColor;
+    return v;
+}
 
-    UIButton *button =
-        [UIButton
-            buttonWithType:UIButtonTypeCustom];
+#pragma mark - Floating
 
-    button.frame =
-        CGRectMake(
-            18.0,
-            160.0,
-            62.0,
-            62.0
-        );
-
-    button.backgroundColor =
-        [UIColor
-            colorWithRed:0.08
-                   green:0.09
-                    blue:0.11
-                   alpha:0.98];
-
-    button.layer.cornerRadius =
-        31.0;
-
-    button.layer.borderWidth =
-        2.0;
-
-    button.layer.borderColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.20].CGColor;
-
-    button.layer.shadowOpacity =
-        0.35;
-
-    button.layer.shadowRadius =
-        8.0;
-
-    button.layer.shadowOffset =
-        CGSizeMake(0, 4);
-
-
-    [button
-        setTitle:@"🦊"
-        forState:UIControlStateNormal];
-
-    button.titleLabel.font =
-        [UIFont systemFontOfSize:29.0];
-
-
-    [button
-        addTarget:self
-           action:@selector(openMainInterface)
- forControlEvents:UIControlEventTouchUpInside];
-
+- (void)buildFloatingButton:(UIView *)root {
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
+    b.frame = CGRectMake(18, 160, 62, 62);
+    b.backgroundColor = [UIColor colorWithRed:0.08 green:0.09 blue:0.10 alpha:0.98];
+    b.layer.cornerRadius = 31;
+    b.layer.borderWidth = 2;
+    b.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.25].CGColor;
+    b.layer.shadowOpacity = 0.35;
+    b.layer.shadowRadius = 8;
+    [b setTitle:@"ð¦" forState:UIControlStateNormal];
+    b.titleLabel.font = [UIFont systemFontOfSize:29];
+    [b addTarget:self action:@selector(togglePanel) forControlEvents:UIControlEventTouchUpInside];
 
     UIPanGestureRecognizer *pan =
-        [[UIPanGestureRecognizer alloc]
-            initWithTarget:self
-                    action:@selector(handleFloatingPan:)];
+        [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(dragFloating:)];
+    [b addGestureRecognizer:pan];
 
-    [button
-        addGestureRecognizer:pan];
-
-
-    [parent addSubview:button];
-
-    _floatingButton =
-        button;
+    [root addSubview:b];
+    _floatingButton = b;
 }
 
+- (void)dragFloating:(UIPanGestureRecognizer *)g {
+    UIView *v = g.view;
+    UIView *p = v.superview;
+    CGPoint t = [g translationInView:p];
+    CGPoint c = v.center;
+    c.x += t.x;
+    c.y += t.y;
+    CGFloat hw = CGRectGetWidth(v.bounds)/2.0;
+    CGFloat hh = CGRectGetHeight(v.bounds)/2.0;
+    c.x = MAX(hw, MIN(CGRectGetWidth(p.bounds)-hw, c.x));
+    c.y = MAX(hh, MIN(CGRectGetHeight(p.bounds)-hh, c.y));
+    v.center = c;
+    [g setTranslation:CGPointZero inView:p];
+}
 
-#pragma mark - Drag Floating Button
+#pragma mark - Panel
 
-- (void)handleFloatingPan:
-    (UIPanGestureRecognizer *)gesture {
+- (void)togglePanel {
+    if (_panel) [self closePanel];
+    else [self buildPanel];
+}
 
-    UIView *view =
-        gesture.view;
+- (void)buildPanel {
+    UIView *root = _overlayWindow.rootViewController.view;
+    if (!root) return;
 
-    UIView *parent =
-        view.superview;
+    CGFloat sw = CGRectGetWidth(root.bounds);
+    CGFloat sh = CGRectGetHeight(root.bounds);
+    CGFloat pw = MIN(390.0, sw - 28.0);
+    CGFloat ph = MIN(790.0, sh - 55.0);
+    CGFloat px = (sw-pw)/2.0;
+    CGFloat py = MAX(24.0, (sh-ph)/2.0);
 
-    if (view == nil ||
-        parent == nil) {
+    UIScrollView *panel = [[UIScrollView alloc] initWithFrame:CGRectMake(px, py, pw, ph)];
+    panel.backgroundColor = [self panelColor];
+    panel.layer.cornerRadius = 28;
+    panel.layer.masksToBounds = YES;
+    panel.showsVerticalScrollIndicator = NO;
 
-        return;
+    UIView *content = [[UIView alloc] initWithFrame:CGRectMake(0,0,pw,1040)];
+    [panel addSubview:content];
+    panel.contentSize = content.bounds.size;
+
+    [root addSubview:panel];
+    _panel = panel;
+    _content = content;
+    _floatingButton.hidden = YES;
+
+    CGFloat W = pw;
+    CGFloat margin = 15;
+    CGFloat inner = W - margin*2;
+
+    // Header
+    UILabel *logo = [self label:@"ð¦  WolFox" frame:CGRectMake(18,16,175,38) size:24 bold:YES];
+    [content addSubview:logo];
+
+    UILabel *sub = [self label:@"Standalone Runtime" frame:CGRectMake(70,48,170,18) size:11 bold:NO];
+    sub.textColor = [UIColor colorWithWhite:1 alpha:0.45];
+    [content addSubview:sub];
+
+    UIButton *support = [self button:@"âï¸  Ø§ÙØ¯Ø¹Ù" frame:CGRectMake(W-165,14,92,42)
+                                tint:[UIColor colorWithRed:0.0 green:0.68 blue:0.92 alpha:1]];
+    [support addTarget:self action:@selector(showSupport) forControlEvents:UIControlEventTouchUpInside];
+    [content addSubview:support];
+
+    UIButton *info = [UIButton buttonWithType:UIButtonTypeSystem];
+    info.frame = CGRectMake(W-68,15,38,38);
+    info.backgroundColor = [UIColor colorWithRed:0.16 green:0.76 blue:0.29 alpha:1];
+    info.layer.cornerRadius = 19;
+    [info setTitle:@"â" forState:UIControlStateNormal];
+    [info setTitleColor:UIColor.blackColor forState:UIControlStateNormal];
+    info.titleLabel.font = [UIFont boldSystemFontOfSize:22];
+    [info addTarget:self action:@selector(showStatus) forControlEvents:UIControlEventTouchUpInside];
+    [content addSubview:info];
+
+    UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
+    close.frame = CGRectMake(W-34,17,28,34);
+    [close setTitle:@"Ã" forState:UIControlStateNormal];
+    [close setTitleColor:[UIColor colorWithWhite:1 alpha:.65] forState:UIControlStateNormal];
+    close.titleLabel.font = [UIFont systemFontOfSize:30];
+    [close addTarget:self action:@selector(closePanel) forControlEvents:UIControlEventTouchUpInside];
+    [content addSubview:close];
+
+    // Search
+    _searchBar = [[UISearchBar alloc] initWithFrame:CGRectMake(margin,72,inner,48)];
+    _searchBar.delegate = self;
+    _searchBar.placeholder = @"Ø¨Ø­Ø« Ø¹Ù ÙÙÙØ¹";
+    _searchBar.searchBarStyle = UISearchBarStyleMinimal;
+    _searchBar.barStyle = UIBarStyleBlack;
+    [content addSubview:_searchBar];
+
+    // Save row
+    UIColor *orange = [UIColor colorWithRed:.95 green:.55 blue:.0 alpha:1];
+    UIColor *green  = [UIColor colorWithRed:.10 green:.72 blue:.30 alpha:1];
+    UIColor *red    = [UIColor colorWithRed:.92 green:.23 blue:.20 alpha:1];
+    UIColor *cyan   = [UIColor colorWithRed:.0 green:.72 blue:.88 alpha:1];
+    UIColor *teal   = [UIColor colorWithRed:.08 green:.72 blue:.62 alpha:1];
+    UIColor *purple = [UIColor colorWithRed:.58 green:.31 blue:.92 alpha:1];
+
+    CGFloat gap=8, third=(inner-gap*2)/3.0;
+    UIButton *saved=[self button:@"ð Ø§ÙÙØ­ÙÙØ¸Ø§Øª" frame:CGRectMake(margin,130,third,48) tint:orange];
+    UIButton *save=[self button:@"â  Ø­ÙØ¸" frame:CGRectMake(margin+third+gap,130,third,48) tint:green];
+    UIButton *restore=[self button:@"â¶  Ø§Ø³ØªØ¹Ø§Ø¯Ø©" frame:CGRectMake(margin+(third+gap)*2,130,third,48) tint:red];
+    [saved addTarget:self action:@selector(showSaved) forControlEvents:UIControlEventTouchUpInside];
+    [save addTarget:self action:@selector(saveCurrent) forControlEvents:UIControlEventTouchUpInside];
+    [restore addTarget:self action:@selector(restoreLocation) forControlEvents:UIControlEventTouchUpInside];
+    [content addSubview:saved]; [content addSubview:save]; [content addSubview:restore];
+
+    // Map
+    _mapView = [[MKMapView alloc] initWithFrame:CGRectMake(margin,188,inner,210)];
+    _mapView.delegate = self;
+    _mapView.layer.cornerRadius = 18;
+    _mapView.layer.masksToBounds = YES;
+    _mapView.showsUserLocation = YES;
+    [content addSubview:_mapView];
+
+    UILongPressGestureRecognizer *lp =
+        [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(mapLongPress:)];
+    lp.minimumPressDuration = .3;
+    [_mapView addGestureRecognizer:lp];
+
+    UIButton *expand=[self button:@"â¤¢" frame:CGRectMake(W-70,202,42,42)
+                             tint:[UIColor colorWithWhite:.7 alpha:1]];
+    [expand addTarget:self action:@selector(centerSelected) forControlEvents:UIControlEventTouchUpInside];
+    [content addSubview:expand];
+
+    CLLocationCoordinate2D start = CLLocationCoordinate2DMake(24.7136,46.6753);
+    [self selectCoordinate:start animated:NO];
+
+    // Map mode row
+    UISegmentedControl *mapModes =
+        [[UISegmentedControl alloc] initWithItems:@[@"Ø¹Ø§Ø¯Ù",@"ÙÙØ± ØµÙØ§Ø¹Ù"]];
+    mapModes.frame = CGRectMake(margin,408,inner*0.50-4,42);
+    mapModes.selectedSegmentIndex = 0;
+    [mapModes addTarget:self action:@selector(mapModeChanged:) forControlEvents:UIControlEventValueChanged];
+    [content addSubview:mapModes];
+
+    UIButton *myLocation=[self button:@"â¤  ÙÙÙØ¹Ù"
+                                frame:CGRectMake(margin+inner*0.50+4,408,inner*0.50-4,42)
+                                 tint:cyan];
+    [myLocation addTarget:self action:@selector(goMyLocation) forControlEvents:UIControlEventTouchUpInside];
+    [content addSubview:myLocation];
+
+    // Location switch
+    UIView *locCard=[self card:CGRectMake(margin,460,inner,58)];
+    [content addSubview:locCard];
+    UILabel *locTitle=[self label:@"â¤  ØªÙØ¹ÙÙ ØªØºÙÙØ± Ø§ÙÙÙÙØ¹"
+                            frame:CGRectMake(18,8,inner-95,42) size:17 bold:NO];
+    [locCard addSubview:locTitle];
+    _locationSwitch=[[UISwitch alloc] initWithFrame:CGRectMake(inner-68,13,55,32)];
+    [_locationSwitch addTarget:self action:@selector(locationSwitchChanged:)
+              forControlEvents:UIControlEventValueChanged];
+    [locCard addSubview:_locationSwitch];
+
+    _coordLabel=[self label:@"" frame:CGRectMake(margin,521,inner,22) size:11 bold:NO];
+    _coordLabel.textAlignment=NSTextAlignmentCenter;
+    _coordLabel.textColor=[UIColor colorWithWhite:1 alpha:.55];
+    [content addSubview:_coordLabel];
+    [self refreshCoordinate];
+
+    // Route/random/schedule
+    UIButton *route=[self button:@"â  ÙØ³Ø§Ø±" frame:CGRectMake(margin,550,third,50) tint:teal];
+    UIButton *random=[self button:@"â¤¨  Ø¹Ø´ÙØ§Ø¦Ù" frame:CGRectMake(margin+third+gap,550,third,50) tint:purple];
+    UIButton *schedule=[self button:@"â·  Ø§ÙØ¬Ø¯ÙÙØ©" frame:CGRectMake(margin+(third+gap)*2,550,third,50) tint:cyan];
+    [route addTarget:self action:@selector(routeTapped) forControlEvents:UIControlEventTouchUpInside];
+    [random addTarget:self action:@selector(randomTapped) forControlEvents:UIControlEventTouchUpInside];
+    [schedule addTarget:self action:@selector(scheduleTapped) forControlEvents:UIControlEventTouchUpInside];
+    [content addSubview:route]; [content addSubview:random]; [content addSubview:schedule];
+
+    // Alternate photo card
+    UIView *photoCard=[self card:CGRectMake(margin,612,inner,112)];
+    [content addSubview:photoCard];
+    UILabel *photoTitle=[self label:@"ð·  ØµÙØ±Ø© Ø¨Ø¯ÙÙØ©" frame:CGRectMake(16,8,180,38) size:17 bold:NO];
+    [photoCard addSubview:photoTitle];
+    _photoSwitch=[[UISwitch alloc] initWithFrame:CGRectMake(inner-68,12,55,32)];
+    [photoCard addSubview:_photoSwitch];
+
+    CGFloat pGap=8, pW=(inner-32-pGap*2)/3.0;
+    UIButton *flip=[self button:@"Ø¹ÙØ³" frame:CGRectMake(16,57,pW,38) tint:teal];
+    UIButton *upload=[self button:@"Ø±ÙØ¹" frame:CGRectMake(16+pW+pGap,57,pW,38) tint:orange];
+    UIButton *del=[self button:@"Ø­Ø°Ù" frame:CGRectMake(16+(pW+pGap)*2,57,pW,38) tint:red];
+    [flip addTarget:self action:@selector(notImplemented) forControlEvents:UIControlEventTouchUpInside];
+    [upload addTarget:self action:@selector(notImplemented) forControlEvents:UIControlEventTouchUpInside];
+    [del addTarget:self action:@selector(notImplemented) forControlEvents:UIControlEventTouchUpInside];
+    [photoCard addSubview:flip]; [photoCard addSubview:upload]; [photoCard addSubview:del];
+
+    // Bluetooth / WiFi
+    CGFloat half=(inner-gap)/2.0;
+    UIButton *bt=[self button:@"â))) Ø§ÙØ¨ÙÙØªÙØ«" frame:CGRectMake(margin,738,half,50)
+                        tint:[UIColor colorWithRed:.1 green:.58 blue:.9 alpha:1]];
+    UIButton *wifi=[self button:@"â  Ø§ÙÙØ§Ù ÙØ§Ù" frame:CGRectMake(margin+half+gap,738,half,50) tint:cyan];
+    [bt addTarget:self action:@selector(bluetoothTapped) forControlEvents:UIControlEventTouchUpInside];
+    [wifi addTarget:self action:@selector(wifiTapped) forControlEvents:UIControlEventTouchUpInside];
+    [content addSubview:bt]; [content addSubview:wifi];
+
+    // Device card
+    UIView *device=[self card:CGRectMake(margin,800,inner,64)];
+    [content addSubview:device];
+    UILabel *deviceTitle=[self label:@"ð±  ÙØ¹Ø±Ù Ø§ÙØ¬ÙØ§Ø²" frame:CGRectMake(15,10,145,42) size:16 bold:NO];
+    [device addSubview:deviceTitle];
+
+    NSArray *deviceButtons=@[@"ÙØ³Ø®",@"ØªØ¹Ø¨Ø¦Ø©",@"ÙÙÙØ©",@"Ø§Ø³ØªØ¹Ø§Ø¯Ø©"];
+    NSArray *deviceColors=@[orange,cyan,purple,green];
+    CGFloat dW=(inner-170)/4.0;
+    for (NSInteger i=0;i<4;i++) {
+        UIButton *b=[self button:deviceButtons[i]
+                          frame:CGRectMake(160+i*dW,13,dW-4,38)
+                           tint:deviceColors[i]];
+        [b addTarget:self action:@selector(deviceAction:) forControlEvents:UIControlEventTouchUpInside];
+        b.tag=i;
+        [device addSubview:b];
     }
 
-    CGPoint translation =
-        [gesture
-            translationInView:parent];
+    // Support / shop
+    UIButton *shop=[self button:@"ð  Ø´Ø±Ø§Ø¡ ÙÙØ¯" frame:CGRectMake(margin,878,half,52) tint:orange];
+    UIButton *chat=[self button:@"â  Ø§ÙØ¯Ø¹Ù Ø§ÙÙÙÙ" frame:CGRectMake(margin+half+gap,878,half,52) tint:cyan];
+    [shop addTarget:self action:@selector(showSupport) forControlEvents:UIControlEventTouchUpInside];
+    [chat addTarget:self action:@selector(showSupport) forControlEvents:UIControlEventTouchUpInside];
+    [content addSubview:shop]; [content addSubview:chat];
 
-    CGPoint center =
-        view.center;
+    // Bottom controls
+    UIButton *stop=[self button:@"â¹  Ø¥ÙÙØ§Ù Ø§ÙÙÙ" frame:CGRectMake(margin,944,third,50) tint:red];
+    UIButton *hide=[self button:@"âÌ¸  Ø¥Ø®ÙØ§Ø¡ Ø§ÙØ£Ø¯Ø§Ø©" frame:CGRectMake(margin+third+gap,944,third,50)
+                           tint:[UIColor colorWithWhite:.65 alpha:1]];
+    UIButton *custom=[self button:@"â·  ØªØ®ØµÙØµ" frame:CGRectMake(margin+(third+gap)*2,944,third,50) tint:cyan];
+    [stop addTarget:self action:@selector(stopAll) forControlEvents:UIControlEventTouchUpInside];
+    [hide addTarget:self action:@selector(closePanel) forControlEvents:UIControlEventTouchUpInside];
+    [custom addTarget:self action:@selector(notImplemented) forControlEvents:UIControlEventTouchUpInside];
+    [content addSubview:stop]; [content addSubview:hide]; [content addSubview:custom];
 
-    center.x += translation.x;
-    center.y += translation.y;
+    _statusLabel=[self label:@"DEFAULT" frame:CGRectMake(margin,1004,inner,20) size:11 bold:NO];
+    _statusLabel.textAlignment=NSTextAlignmentCenter;
+    _statusLabel.textColor=[UIColor colorWithWhite:1 alpha:.45];
+    [content addSubview:_statusLabel];
 
-    CGFloat halfW =
-        CGRectGetWidth(view.bounds) / 2.0;
-
-    CGFloat halfH =
-        CGRectGetHeight(view.bounds) / 2.0;
-
-    center.x =
-        MAX(
-            halfW,
-            MIN(
-                CGRectGetWidth(parent.bounds)
-                    - halfW,
-                center.x
-            )
-        );
-
-    center.y =
-        MAX(
-            halfH,
-            MIN(
-                CGRectGetHeight(parent.bounds)
-                    - halfH,
-                center.y
-            )
-        );
-
-    view.center =
-        center;
-
-    [gesture
-        setTranslation:CGPointZero
-                inView:parent];
+    [self refreshStatus];
 }
-
-
-#pragma mark - Open
-
-- (void)openMainInterface {
-
-    if (_mainView != nil) {
-
-        [self closeMainInterface];
-
-        return;
-    }
-
-    [self buildMainInterface];
-}
-
-
-#pragma mark - Main Interface
-
-- (void)buildMainInterface {
-
-    UIView *root =
-        _overlayWindow
-            .rootViewController
-            .view;
-
-    if (root == nil) {
-        return;
-    }
-
-
-    UIView *main =
-        [[UIView alloc]
-            initWithFrame:root.bounds];
-
-    main.backgroundColor =
-        [UIColor
-            colorWithRed:0.04
-                   green:0.05
-                    blue:0.06
-                   alpha:0.98];
-
-    main.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth |
-        UIViewAutoresizingFlexibleHeight;
-
-    [root addSubview:main];
-
-    _mainView =
-        main;
-
-
-    [self buildMap];
-
-    [self buildTopBar];
-
-    [self buildMapControls];
-
-    [self buildBottomCard];
-
-    [self buildSideMenu];
-
-
-    _floatingButton.hidden =
-        YES;
-
-
-    CLLocationCoordinate2D initial =
-        CLLocationCoordinate2DMake(
-            24.7136,
-            46.6753
-        );
-
-    [self selectCoordinate:
-        initial
-         animated:NO];
-}
-
 
 #pragma mark - Map
 
-- (void)buildMap {
-
-    CGRect frame =
-        _mainView.bounds;
-
-    MKMapView *map =
-        [[MKMapView alloc]
-            initWithFrame:frame];
-
-    map.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth |
-        UIViewAutoresizingFlexibleHeight;
-
-    map.delegate =
-        self;
-
-    map.mapType =
-        MKMapTypeStandard;
-
-    map.showsCompass =
-        YES;
-
-    map.showsScale =
-        NO;
-
-    map.showsUserLocation =
-        YES;
-
-
-    [_mainView addSubview:map];
-
-    _mapView =
-        map;
-
-
-    UILongPressGestureRecognizer *longPress =
-        [[UILongPressGestureRecognizer alloc]
-            initWithTarget:self
-                    action:@selector(mapLongPressed:)];
-
-    longPress.minimumPressDuration =
-        0.35;
-
-    [_mapView
-        addGestureRecognizer:longPress];
+- (void)mapLongPress:(UILongPressGestureRecognizer *)g {
+    if (g.state != UIGestureRecognizerStateBegan) return;
+    CGPoint p=[g locationInView:_mapView];
+    CLLocationCoordinate2D c=[_mapView convertPoint:p toCoordinateFromView:_mapView];
+    [self selectCoordinate:c animated:YES];
 }
 
+- (void)selectCoordinate:(CLLocationCoordinate2D)c animated:(BOOL)animated {
+    _selectedCoordinate=c;
+    _hasCoordinate=YES;
 
-#pragma mark - Top Bar
+    NSMutableArray *remove=[NSMutableArray array];
+    for (id<MKAnnotation> a in _mapView.annotations) {
+        if (![a isKindOfClass:MKUserLocation.class]) [remove addObject:a];
+    }
+    [_mapView removeAnnotations:remove];
 
-- (void)buildTopBar {
+    MKPointAnnotation *pin=[[MKPointAnnotation alloc] init];
+    pin.coordinate=c;
+    pin.title=@"Selected Location";
+    [_mapView addAnnotation:pin];
 
-    CGFloat width =
-        CGRectGetWidth(
-            _mainView.bounds
-        );
-
-
-    UIView *top =
-        [[UIView alloc]
-            initWithFrame:
-                CGRectMake(
-                    12,
-                    52,
-                    width - 24,
-                    58
-                )];
-
-    top.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth;
-
-    top.backgroundColor =
-        [UIColor
-            colorWithRed:0.06
-                   green:0.07
-                    blue:0.09
-                   alpha:0.94];
-
-    top.layer.cornerRadius =
-        18.0;
-
-    top.layer.shadowOpacity =
-        0.20;
-
-    top.layer.shadowRadius =
-        8.0;
-
-    [_mainView addSubview:top];
-
-
-    UIButton *menu =
-        [UIButton
-            buttonWithType:UIButtonTypeSystem];
-
-    menu.frame =
-        CGRectMake(
-            8,
-            7,
-            44,
-            44
-        );
-
-    [menu
-        setTitle:@"☰"
-        forState:UIControlStateNormal];
-
-    menu.titleLabel.font =
-        [UIFont
-            boldSystemFontOfSize:23];
-
-    [menu
-        setTitleColor:UIColor.whiteColor
-        forState:UIControlStateNormal];
-
-    [menu
-        addTarget:self
-           action:@selector(toggleSideMenu)
- forControlEvents:UIControlEventTouchUpInside];
-
-    [top addSubview:menu];
-
-    _menuButton =
-        menu;
-
-
-    UIButton *close =
-        [UIButton
-            buttonWithType:UIButtonTypeSystem];
-
-    close.frame =
-        CGRectMake(
-            CGRectGetWidth(top.bounds) - 50,
-            7,
-            44,
-            44
-        );
-
-    close.autoresizingMask =
-        UIViewAutoresizingFlexibleLeftMargin;
-
-    [close
-        setTitle:@"✕"
-        forState:UIControlStateNormal];
-
-    close.titleLabel.font =
-        [UIFont
-            boldSystemFontOfSize:21];
-
-    [close
-        setTitleColor:UIColor.whiteColor
-        forState:UIControlStateNormal];
-
-    [close
-        addTarget:self
-           action:@selector(closeMainInterface)
- forControlEvents:UIControlEventTouchUpInside];
-
-    [top addSubview:close];
-
-    _closeButton =
-        close;
-
-
-    UISearchBar *search =
-        [[UISearchBar alloc]
-            initWithFrame:
-                CGRectMake(
-                    54,
-                    7,
-                    CGRectGetWidth(top.bounds)
-                        - 110,
-                    44
-                )];
-
-    search.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth;
-
-    search.placeholder =
-        @"Search location";
-
-    search.delegate =
-        self;
-
-    search.searchBarStyle =
-        UISearchBarStyleMinimal;
-
-    search.tintColor =
-        UIColor.whiteColor;
-
-    search.barStyle =
-        UIBarStyleBlack;
-
-
-    [top addSubview:search];
-
-    _searchBar =
-        search;
+    MKCoordinateRegion r=MKCoordinateRegionMakeWithDistance(c,650000,650000);
+    [_mapView setRegion:r animated:animated];
+    [self refreshCoordinate];
 }
 
-
-#pragma mark - Map Controls
-
-- (UIButton *)smallMapButton:
-    (NSString *)title
-                     y:
-    (CGFloat)y {
-
-    CGFloat width =
-        CGRectGetWidth(
-            _mainView.bounds
-        );
-
-    UIButton *button =
-        [UIButton
-            buttonWithType:UIButtonTypeSystem];
-
-    button.frame =
-        CGRectMake(
-            width - 62,
-            y,
-            48,
-            48
-        );
-
-    button.autoresizingMask =
-        UIViewAutoresizingFlexibleLeftMargin;
-
-    button.backgroundColor =
-        [UIColor
-            colorWithRed:0.06
-                   green:0.07
-                    blue:0.09
-                   alpha:0.94];
-
-    button.layer.cornerRadius =
-        16.0;
-
-    [button
-        setTitle:title
-        forState:UIControlStateNormal];
-
-    button.titleLabel.font =
-        [UIFont
-            systemFontOfSize:20];
-
-    [button
-        setTitleColor:UIColor.whiteColor
-        forState:UIControlStateNormal];
-
-    [_mainView addSubview:button];
-
-    return button;
+- (void)refreshCoordinate {
+    if (!_coordLabel || !_hasCoordinate) return;
+    _coordLabel.text=[NSString stringWithFormat:@"%.6f   %.6f",
+                      _selectedCoordinate.latitude,_selectedCoordinate.longitude];
 }
 
-
-- (void)buildMapControls {
-
-    UIButton *center =
-        [self
-            smallMapButton:@"◎"
-                         y:132];
-
-    [center
-        addTarget:self
-           action:@selector(centerSelectedLocation)
- forControlEvents:UIControlEventTouchUpInside];
-
-    _centerButton =
-        center;
-
-
-    UIButton *type =
-        [self
-            smallMapButton:@"◫"
-                         y:190];
-
-    [type
-        addTarget:self
-           action:@selector(changeMapType)
- forControlEvents:UIControlEventTouchUpInside];
-
-    _mapTypeButton =
-        type;
+- (void)mapModeChanged:(UISegmentedControl *)s {
+    _mapView.mapType = s.selectedSegmentIndex == 0 ? MKMapTypeStandard : MKMapTypeSatellite;
 }
 
+- (void)centerSelected {
+    if (!_hasCoordinate) return;
+    MKCoordinateRegion r=MKCoordinateRegionMakeWithDistance(_selectedCoordinate,1500,1500);
+    [_mapView setRegion:r animated:YES];
+}
 
-#pragma mark - Long Press
-
-- (void)mapLongPressed:
-    (UILongPressGestureRecognizer *)gesture {
-
-    if (gesture.state !=
-        UIGestureRecognizerStateBegan) {
-
+- (void)goMyLocation {
+    CLLocation *loc=_mapView.userLocation.location;
+    if (!loc) {
+        [self alert:@"Ø§ÙÙÙÙØ¹ Ø§ÙØ­Ø§ÙÙ ØºÙØ± ÙØªØ§Ø­."];
         return;
     }
-
-    CGPoint point =
-        [gesture
-            locationInView:_mapView];
-
-    CLLocationCoordinate2D coordinate =
-        [_mapView
-            convertPoint:point
-            toCoordinateFromView:_mapView];
-
-    [self
-        selectCoordinate:coordinate
-                animated:YES];
+    [self selectCoordinate:loc.coordinate animated:YES];
 }
-
-
-#pragma mark - Coordinate
-
-- (void)selectCoordinate:
-    (CLLocationCoordinate2D)coordinate
-              animated:
-    (BOOL)animated {
-
-    _selectedCoordinate =
-        coordinate;
-
-    _hasSelectedCoordinate =
-        YES;
-
-
-    [_mapView
-        removeAnnotations:
-            _mapView.annotations];
-
-
-    MKPointAnnotation *pin =
-        [[MKPointAnnotation alloc] init];
-
-    pin.coordinate =
-        coordinate;
-
-    pin.title =
-        @"Selected Location";
-
-    [_mapView
-        addAnnotation:pin];
-
-
-    MKCoordinateRegion region =
-        MKCoordinateRegionMakeWithDistance(
-            coordinate,
-            1600,
-            1600
-        );
-
-    [_mapView
-        setRegion:region
-         animated:animated];
-
-
-    [self refreshCoordinateLabel];
-}
-
-
-- (void)refreshCoordinateLabel {
-
-    if (_coordinateLabel == nil) {
-        return;
-    }
-
-    if (!_hasSelectedCoordinate) {
-
-        _coordinateLabel.text =
-            @"No location selected";
-
-        return;
-    }
-
-    _coordinateLabel.text =
-        [NSString
-            stringWithFormat:
-                @"%.6f   %.6f",
-                _selectedCoordinate.latitude,
-                _selectedCoordinate.longitude];
-}
-
-
-#pragma mark - Bottom Card
-
-- (void)buildBottomCard {
-
-    CGFloat width =
-        CGRectGetWidth(
-            _mainView.bounds
-        );
-
-    CGFloat height =
-        CGRectGetHeight(
-            _mainView.bounds
-        );
-
-
-    UIView *card =
-        [[UIView alloc]
-            initWithFrame:
-                CGRectMake(
-                    14,
-                    height - 218,
-                    width - 28,
-                    196
-                )];
-
-    card.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth |
-        UIViewAutoresizingFlexibleTopMargin;
-
-    card.backgroundColor =
-        [UIColor
-            colorWithRed:0.055
-                   green:0.06
-                    blue:0.075
-                   alpha:0.97];
-
-    card.layer.cornerRadius =
-        24.0;
-
-    card.layer.shadowOpacity =
-        0.25;
-
-    card.layer.shadowRadius =
-        12.0;
-
-
-    [_mainView addSubview:card];
-
-    _bottomCard =
-        card;
-
-
-    UILabel *mode =
-        [[UILabel alloc]
-            initWithFrame:
-                CGRectMake(
-                    20,
-                    15,
-                    140,
-                    24
-                )];
-
-    mode.text =
-        @"LOCATION";
-
-    mode.font =
-        [UIFont
-            boldSystemFontOfSize:12];
-
-    mode.textColor =
-        [UIColor
-            colorWithRed:0.35
-                   green:0.65
-                    blue:1.0
-                   alpha:1.0];
-
-    [card addSubview:mode];
-
-    _modeLabel =
-        mode;
-
-
-    UILabel *coordinates =
-        [[UILabel alloc]
-            initWithFrame:
-                CGRectMake(
-                    20,
-                    41,
-                    CGRectGetWidth(card.bounds)
-                        - 40,
-                    28
-                )];
-
-    coordinates.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth;
-
-    coordinates.font =
-        [UIFont
-            monospacedDigitSystemFontOfSize:15
-                                     weight:UIFontWeightMedium];
-
-    coordinates.textColor =
-        UIColor.whiteColor;
-
-    [card addSubview:coordinates];
-
-    _coordinateLabel =
-        coordinates;
-
-
-    UIButton *activate =
-        [UIButton
-            buttonWithType:UIButtonTypeSystem];
-
-    activate.frame =
-        CGRectMake(
-            20,
-            79,
-            CGRectGetWidth(card.bounds)
-                - 40,
-            48
-        );
-
-    activate.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth;
-
-    activate.backgroundColor =
-        [UIColor
-            colorWithRed:0.20
-                   green:0.52
-                    blue:1.0
-                   alpha:1.0];
-
-    activate.layer.cornerRadius =
-        14.0;
-
-    [activate
-        setTitle:@"Activate Selected Location"
-        forState:UIControlStateNormal];
-
-    [activate
-        setTitleColor:UIColor.whiteColor
-        forState:UIControlStateNormal];
-
-    activate.titleLabel.font =
-        [UIFont
-            systemFontOfSize:15
-                      weight:UIFontWeightSemibold];
-
-    [activate
-        addTarget:self
-           action:@selector(activateSelectedLocation)
- forControlEvents:UIControlEventTouchUpInside];
-
-    [card addSubview:activate];
-
-    _activateButton =
-        activate;
-
-
-    UIButton *restore =
-        [UIButton
-            buttonWithType:UIButtonTypeSystem];
-
-    restore.frame =
-        CGRectMake(
-            20,
-            137,
-            132,
-            40
-        );
-
-    restore.backgroundColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.08];
-
-    restore.layer.cornerRadius =
-        12.0;
-
-    [restore
-        setTitle:@"Restore"
-        forState:UIControlStateNormal];
-
-    [restore
-        setTitleColor:UIColor.whiteColor
-        forState:UIControlStateNormal];
-
-    [restore
-        addTarget:self
-           action:@selector(restoreLocation)
- forControlEvents:UIControlEventTouchUpInside];
-
-    [card addSubview:restore];
-
-    _restoreButton =
-        restore;
-
-
-    UILabel *status =
-        [[UILabel alloc]
-            initWithFrame:
-                CGRectMake(
-                    164,
-                    137,
-                    CGRectGetWidth(card.bounds)
-                        - 184,
-                    40
-                )];
-
-    status.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth;
-
-    status.textAlignment =
-        NSTextAlignmentRight;
-
-    status.font =
-        [UIFont systemFontOfSize:12];
-
-    status.textColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.55];
-
-    [card addSubview:status];
-
-    _statusLabel =
-        status;
-
-
-    [self refreshStatus];
-}
-
-
-#pragma mark - Activate Location
-
-- (void)activateSelectedLocation {
-
-    if (!_hasSelectedCoordinate) {
-
-        [self
-            showAlert:@"Select a location first."];
-
-        return;
-    }
-
-
-    WFError *error =
-        [[WFAppManager sharedManager]
-            activateStaticLocationWithLatitude:
-                _selectedCoordinate.latitude
-            longitude:
-                _selectedCoordinate.longitude];
-
-
-    if ([error isSuccess]) {
-
-        [self
-            showAlert:
-                @"Location saved in WolFox runtime ✅"];
-
-    } else {
-
-        [self
-            showAlert:
-                error.humanReadableMessage
-                    ?: @"Unable to activate"];
-    }
-
-
-    [self refreshStatus];
-}
-
-
-- (void)restoreLocation {
-
-    WFError *error =
-        [[WFAppManager sharedManager]
-            restoreDefaultLocation];
-
-
-    if ([error isSuccess]) {
-
-        [self
-            showAlert:
-                @"Default location restored ✅"];
-
-    } else {
-
-        [self
-            showAlert:
-                error.humanReadableMessage
-                    ?: @"Unable to restore"];
-    }
-
-
-    [self refreshStatus];
-}
-
-
-#pragma mark - Status
-
-- (void)refreshStatus {
-
-    NSDictionary *snapshot =
-        [[WFRuntimeState sharedState]
-            snapshotForUI];
-
-    BOOL active =
-        [snapshot[@"locationEnabled"]
-            boolValue];
-
-    if (active) {
-
-        double lat =
-            [snapshot[@"currentLatitude"]
-                doubleValue];
-
-        double lon =
-            [snapshot[@"currentLongitude"]
-                doubleValue];
-
-        _statusLabel.text =
-            [NSString
-                stringWithFormat:
-                    @"ACTIVE %.4f, %.4f",
-                    lat,
-                    lon];
-
-    } else {
-
-        _statusLabel.text =
-            @"DEFAULT";
-    }
-}
-
 
 #pragma mark - Search
 
-- (void)searchBarSearchButtonClicked:
-    (UISearchBar *)searchBar {
+- (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
+    NSString *q=searchBar.text;
+    if (!q.length) return;
+    [searchBar resignFirstResponder];
 
-    NSString *query =
-        searchBar.text;
+    MKLocalSearchRequest *req=[[MKLocalSearchRequest alloc] init];
+    req.naturalLanguageQuery=q;
+    MKLocalSearch *search=[[MKLocalSearch alloc] initWithRequest:req];
 
-    if (query.length == 0) {
-        return;
-    }
-
-
-    [searchBar
-        resignFirstResponder];
-
-
-    MKLocalSearchRequest *request =
-        [[MKLocalSearchRequest alloc]
-            init];
-
-    request.naturalLanguageQuery =
-        query;
-
-
-    MKLocalSearch *search =
-        [[MKLocalSearch alloc]
-            initWithRequest:request];
-
-
-    __weak WFUIController *weakSelf =
-        self;
-
-
-    [search
-        startWithCompletionHandler:
-            ^(
-                MKLocalSearchResponse *response,
-                NSError *error
-            ) {
-
-        WFUIController *strongSelf =
-            weakSelf;
-
-        if (strongSelf == nil) {
+    __weak WFUIController *weakSelf=self;
+    [search startWithCompletionHandler:^(MKLocalSearchResponse *response, NSError *error) {
+        WFUIController *selfRef=weakSelf;
+        if (!selfRef) return;
+        if (error || !response.mapItems.count) {
+            [selfRef alert:@"ÙÙ ÙØªÙ Ø§ÙØ¹Ø«ÙØ± Ø¹ÙÙ Ø§ÙÙÙÙØ¹."];
             return;
         }
-
-
-        if (error != nil ||
-            response.mapItems.count == 0) {
-
-            [strongSelf
-                showAlert:
-                    @"Location not found"];
-
-            return;
-        }
-
-
-        MKMapItem *item =
-            response.mapItems.firstObject;
-
-        CLLocationCoordinate2D coordinate =
-            item.placemark.coordinate;
-
-
-        dispatch_async(
-            dispatch_get_main_queue(),
-            ^{
-
-            [strongSelf
-                selectCoordinate:coordinate
-                        animated:YES];
+        MKMapItem *item=response.mapItems.firstObject;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [selfRef selectCoordinate:item.placemark.coordinate animated:YES];
         });
     }];
 }
 
+#pragma mark - Core actions
 
-#pragma mark - Map Controls
+- (void)locationSwitchChanged:(UISwitch *)s {
+    if (s.isOn) {
+        if (!_hasCoordinate) {
+            s.on=NO;
+            [self alert:@"Ø­Ø¯Ø¯ ÙÙÙØ¹Ø§Ù Ø£ÙÙØ§Ù."];
+            return;
+        }
 
-- (void)centerSelectedLocation {
+        WFError *e=[[WFAppManager sharedManager]
+                    activateStaticLocationWithLatitude:_selectedCoordinate.latitude
+                    longitude:_selectedCoordinate.longitude];
+        if (![e isSuccess]) {
+            s.on=NO;
+            [self alert:e.humanReadableMessage ?: @"ØªØ¹Ø°Ø± ØªÙØ¹ÙÙ Ø§ÙÙÙÙØ¹."];
+        }
+    } else {
+        [[WFAppManager sharedManager] restoreDefaultLocation];
+    }
+    [self refreshStatus];
+}
 
-    if (!_hasSelectedCoordinate) {
+- (void)restoreLocation {
+    WFError *e=[[WFAppManager sharedManager] restoreDefaultLocation];
+    _locationSwitch.on=NO;
+    [self refreshStatus];
+    [self alert:[e isSuccess] ? @"ØªÙØª Ø§ÙØ§Ø³ØªØ¹Ø§Ø¯Ø© â" :
+     (e.humanReadableMessage ?: @"ØªØ¹Ø°Ø±Øª Ø§ÙØ§Ø³ØªØ¹Ø§Ø¯Ø©.")];
+}
+
+- (void)saveCurrent {
+    if (!_hasCoordinate) {
+        [self alert:@"Ø­Ø¯Ø¯ ÙÙÙØ¹Ø§Ù Ø£ÙÙØ§Ù."];
         return;
     }
-
-    MKCoordinateRegion region =
-        MKCoordinateRegionMakeWithDistance(
-            _selectedCoordinate,
-            1200,
-            1200
-        );
-
-    [_mapView
-        setRegion:region
-         animated:YES];
+    WFError *e=[[WFLocationService sharedService]
+                addFavoriteWithName:@"WolFox Location"
+                latitude:_selectedCoordinate.latitude
+                longitude:_selectedCoordinate.longitude];
+    [self alert:[e isSuccess] ? @"ØªÙ Ø­ÙØ¸ Ø§ÙÙÙÙØ¹ â" :
+     (e.humanReadableMessage ?: @"ØªØ¹Ø°Ø± Ø§ÙØ­ÙØ¸.")];
 }
 
+- (void)showSaved {
+    NSArray *items=[[WFLocationService sharedService] favorites];
+    [self alert:[NSString stringWithFormat:@"Ø¹Ø¯Ø¯ Ø§ÙÙÙØ§ÙØ¹ Ø§ÙÙØ­ÙÙØ¸Ø©: %lu",
+                 (unsigned long)items.count]];
+}
 
-- (void)changeMapType {
+- (void)routeTapped {
+    [self alert:@"ÙØ§Ø¬ÙØ© Ø§ÙÙØ³Ø§Ø± Ø¬Ø§ÙØ²Ø© ÙÙØªÙØµÙÙ Ø¨ÙØ­Ø±Ù Route ÙÙ WolFox."];
+}
 
-    switch (_mapView.mapType) {
+- (void)randomTapped {
+    WFError *e=[[WFAppManager sharedManager] startRandomMovementWithRadius:100.0];
+    [self alert:[e isSuccess] ? @"ØªÙ ØªØ´ØºÙÙ Ø§ÙÙØ¶Ø¹ Ø§ÙØ¹Ø´ÙØ§Ø¦Ù ÙÙ WolFox Runtime â" :
+     (e.humanReadableMessage ?: @"ØªØ¹Ø°Ø± Ø§ÙØªØ´ØºÙÙ.")];
+    [self refreshStatus];
+}
 
-        case MKMapTypeStandard:
+- (void)scheduleTapped {
+    WFError *e=[[WFAppManager sharedManager] startScheduler];
+    [self alert:[e isSuccess] ? @"ØªÙ ØªØ´ØºÙÙ Scheduler ÙÙ WolFox Runtime â" :
+     (e.humanReadableMessage ?: @"ØªØ¹Ø°Ø± Ø§ÙØªØ´ØºÙÙ.")];
+    [self refreshStatus];
+}
 
-            _mapView.mapType =
-                MKMapTypeSatellite;
+- (void)wifiTapped {
+    [self alert:@"ÙØ§Ø¬ÙØ© Wi-Fi Ø¬Ø§ÙØ²Ø©. ÙÙØ²Ù Ø§Ø®ØªÙØ§Ø± Profile ID ÙØ±Ø¨Ø·ÙØ§ Ø¨Ø§ÙÙ Core."];
+}
 
-            break;
+- (void)bluetoothTapped {
+    [self alert:@"Bluetooth UI ÙÙØ· ÙÙ ÙØ°Ù Ø§ÙÙØ³Ø®Ø©."];
+}
 
-
-        case MKMapTypeSatellite:
-
-            _mapView.mapType =
-                MKMapTypeHybrid;
-
-            break;
-
-
-        default:
-
-            _mapView.mapType =
-                MKMapTypeStandard;
-
-            break;
+- (void)deviceAction:(UIButton *)sender {
+    if (sender.tag==3) {
+        WFError *e=[[WFAppManager sharedManager] setActiveDeviceProfileWithID:@""];
+        (void)e;
     }
+    [self alert:@"Device Profile UI Ø¬Ø§ÙØ²Ø© ÙÙØªÙØµÙÙ Ø¨Ø§ÙØ¨ÙØ§ÙØ§Øª Ø§ÙÙØ¹ÙÙØ©."];
 }
 
-
-#pragma mark - Side Menu
-
-- (void)buildSideMenu {
-
-    CGFloat height =
-        CGRectGetHeight(
-            _mainView.bounds
-        );
-
-    UIView *menu =
-        [[UIView alloc]
-            initWithFrame:
-                CGRectMake(
-                    -260,
-                    0,
-                    250,
-                    height
-                )];
-
-    menu.autoresizingMask =
-        UIViewAutoresizingFlexibleHeight;
-
-    menu.backgroundColor =
-        [UIColor
-            colorWithRed:0.045
-                   green:0.05
-                    blue:0.065
-                   alpha:0.99];
-
-    menu.layer.shadowOpacity =
-        0.35;
-
-    menu.layer.shadowRadius =
-        16.0;
-
-
-    [_mainView addSubview:menu];
-
-    _sideMenu =
-        menu;
-
-
-    UILabel *logo =
-        [[UILabel alloc]
-            initWithFrame:
-                CGRectMake(
-                    24,
-                    64,
-                    190,
-                    50
-                )];
-
-    logo.text =
-        @"🦊  WolFox";
-
-    logo.font =
-        [UIFont
-            boldSystemFontOfSize:24];
-
-    logo.textColor =
-        UIColor.whiteColor;
-
-    [menu addSubview:logo];
-
-
-    UILabel *version =
-        [[UILabel alloc]
-            initWithFrame:
-                CGRectMake(
-                    26,
-                    110,
-                    180,
-                    22
-                )];
-
-    version.text =
-        @"Standalone Runtime";
-
-    version.font =
-        [UIFont systemFontOfSize:12];
-
-    version.textColor =
-        [UIColor
-            colorWithWhite:1.0
-                     alpha:0.45];
-
-    [menu addSubview:version];
-
-
-    UITableView *table =
-        [[UITableView alloc]
-            initWithFrame:
-                CGRectMake(
-                    0,
-                    155,
-                    250,
-                    height - 155
-                )
-                   style:
-                UITableViewStylePlain];
-
-    table.autoresizingMask =
-        UIViewAutoresizingFlexibleHeight;
-
-    table.backgroundColor =
-        UIColor.clearColor;
-
-    table.separatorStyle =
-        UITableViewCellSeparatorStyleNone;
-
-    table.delegate =
-        self;
-
-    table.dataSource =
-        self;
-
-    [menu addSubview:table];
-
-    _menuTable =
-        table;
+- (void)stopAll {
+    [[WFAppManager sharedManager] stopMovement];
+    [[WFAppManager sharedManager] restoreDefaultLocation];
+    _locationSwitch.on=NO;
+    [self refreshStatus];
+    [self alert:@"ØªÙ Ø¥ÙÙØ§Ù Ø­Ø§ÙØ© WolFox Runtime Ø§ÙØ­Ø§ÙÙØ©."];
 }
 
-
-- (void)toggleSideMenu {
-
-    _menuVisible =
-        !_menuVisible;
-
-    CGFloat targetX =
-        _menuVisible
-            ? 0
-            : -260;
-
-
-    [UIView
-        animateWithDuration:0.22
-                 animations:^{
-
-        CGRect frame =
-            self->_sideMenu.frame;
-
-        frame.origin.x =
-            targetX;
-
-        self->_sideMenu.frame =
-            frame;
-    }];
+- (void)refreshStatus {
+    NSDictionary *s=[[WFRuntimeState sharedState] snapshotForUI];
+    BOOL active=[s[@"locationEnabled"] boolValue];
+    if (_statusLabel) _statusLabel.text=active ? @"LOCATION ACTIVE" : @"DEFAULT";
+    if (_locationSwitch) _locationSwitch.on=active;
 }
 
+#pragma mark - Informational
 
-#pragma mark - Menu Table
-
-- (NSInteger)tableView:
-    (UITableView *)tableView
- numberOfRowsInSection:
-    (NSInteger)section {
-
-    (void)tableView;
-    (void)section;
-
-    return 6;
+- (void)showStatus {
+    NSDictionary *s=[[WFRuntimeState sharedState] snapshotForUI];
+    NSString *m=[NSString stringWithFormat:
+                 @"Location: %@\nLat: %.6f\nLon: %.6f\nLast: %@",
+                 [s[@"locationEnabled"] boolValue] ? @"Active" : @"Default",
+                 [s[@"currentLatitude"] doubleValue],
+                 [s[@"currentLongitude"] doubleValue],
+                 s[@"lastAction"] ?: @""];
+    [self alert:m];
 }
 
-
-- (UITableViewCell *)tableView:
-    (UITableView *)tableView
- cellForRowAtIndexPath:
-    (NSIndexPath *)indexPath {
-
-    static NSString *identifier =
-        @"WFMenuCell";
-
-
-    UITableViewCell *cell =
-        [tableView
-            dequeueReusableCellWithIdentifier:
-                identifier];
-
-
-    if (cell == nil) {
-
-        cell =
-            [[UITableViewCell alloc]
-                initWithStyle:
-                    UITableViewCellStyleDefault
-              reuseIdentifier:
-                    identifier];
-
-        cell.backgroundColor =
-            UIColor.clearColor;
-
-        cell.textLabel.textColor =
-            UIColor.whiteColor;
-
-        cell.textLabel.font =
-            [UIFont
-                systemFontOfSize:16
-                          weight:UIFontWeightMedium];
-
-        cell.selectionStyle =
-            UITableViewCellSelectionStyleNone;
-    }
-
-
-    NSArray *titles =
-        @[
-            @"📍  Location",
-            @"🛣  Route",
-            @"📶  Wi-Fi",
-            @"📱  Device",
-            @"⏰  Scheduler",
-            @"ℹ️  Status"
-        ];
-
-
-    cell.textLabel.text =
-        titles[indexPath.row];
-
-
-    return cell;
+- (void)showSupport {
+    [self alert:@"WolFox"];
 }
 
-
-- (void)tableView:
-    (UITableView *)tableView
- didSelectRowAtIndexPath:
-    (NSIndexPath *)indexPath {
-
-    (void)tableView;
-
-
-    [self toggleSideMenu];
-
-
-    switch (indexPath.row) {
-
-        case 0:
-
-            [self showLocationMode];
-
-            break;
-
-
-        case 1:
-
-            [self
-                showUnavailable:
-                    @"Route"];
-
-            break;
-
-
-        case 2:
-
-            [self
-                showUnavailable:
-                    @"Wi-Fi Profiles"];
-
-            break;
-
-
-        case 3:
-
-            [self
-                showUnavailable:
-                    @"Device Profiles"];
-
-            break;
-
-
-        case 4:
-
-            [self
-                showUnavailable:
-                    @"Scheduler"];
-
-            break;
-
-
-        case 5:
-
-            [self showRuntimeStatus];
-
-            break;
-    }
+- (void)notImplemented {
+    [self alert:@"ÙØ°Ù Ø§ÙÙØ§Ø¬ÙØ© ÙÙØ¬ÙØ¯Ø©Ø ÙÙÙ Ø§ÙÙØ¸ÙÙØ© ØºÙØ± ÙÙØµÙÙØ© Ø¨Ø§ÙÙ Core Ø§ÙØ­Ø§ÙÙ Ø¨Ø¹Ø¯."];
 }
 
+- (void)alert:(NSString *)message {
+    UIViewController *vc=_overlayWindow.rootViewController;
+    while (vc.presentedViewController) vc=vc.presentedViewController;
 
-#pragma mark - Modes
-
-- (void)showLocationMode {
-
-    _modeLabel.text =
-        @"LOCATION";
-
-    _bottomCard.hidden =
-        NO;
+    UIAlertController *a=[UIAlertController alertControllerWithTitle:@"WolFox"
+                                                             message:message ?: @""
+                                                      preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"OK"
+                                         style:UIAlertActionStyleDefault
+                                       handler:nil]];
+    [vc presentViewController:a animated:YES completion:nil];
 }
-
-
-- (void)showUnavailable:
-    (NSString *)feature {
-
-    NSString *message =
-        [NSString
-            stringWithFormat:
-                @"%@ is not implemented in the current WolFox Core yet.",
-                feature];
-
-    [self showAlert:message];
-}
-
-
-- (void)showRuntimeStatus {
-
-    NSDictionary *snapshot =
-        [[WFRuntimeState sharedState]
-            snapshotForUI];
-
-    NSString *message =
-        [NSString
-            stringWithFormat:
-                @"Location: %@\nMode: %@\nLast action: %@",
-                [snapshot[@"locationEnabled"]
-                    boolValue]
-                    ? @"Active"
-                    : @"Default",
-                snapshot[@"locationMode"]
-                    ?: @"",
-                snapshot[@"lastAction"]
-                    ?: @""];
-
-    [self showAlert:message];
-}
-
-
-#pragma mark - Alert
-
-- (void)showAlert:
-    (NSString *)message {
-
-    UIViewController *controller =
-        _overlayWindow
-            .rootViewController;
-
-    if (controller == nil) {
-        return;
-    }
-
-
-    while (controller
-               .presentedViewController != nil) {
-
-        controller =
-            controller
-                .presentedViewController;
-    }
-
-
-    UIAlertController *alert =
-        [UIAlertController
-            alertControllerWithTitle:
-                @"WolFox"
-                             message:
-                message ?: @""
-                      preferredStyle:
-                UIAlertControllerStyleAlert];
-
-
-    [alert
-        addAction:
-            [UIAlertAction
-                actionWithTitle:@"OK"
-                          style:
-                    UIAlertActionStyleDefault
-                        handler:nil]];
-
-
-    [controller
-        presentViewController:alert
-                     animated:YES
-                   completion:nil];
-}
-
 
 #pragma mark - Close
 
-- (void)closeMainInterface {
+- (void)closePanel {
+    [_searchBar resignFirstResponder];
+    [_panel removeFromSuperview];
 
-    [_searchBar
-        resignFirstResponder];
+    _panel=nil;
+    _content=nil;
+    _searchBar=nil;
+    _mapView=nil;
+    _coordLabel=nil;
+    _statusLabel=nil;
+    _locationSwitch=nil;
+    _photoSwitch=nil;
 
-
-    [_mainView
-        removeFromSuperview];
-
-
-    _mainView =
-        nil;
-
-    _sideMenu =
-        nil;
-
-    _bottomCard =
-        nil;
-
-    _mapView =
-        nil;
-
-    _searchBar =
-        nil;
-
-    _coordinateLabel =
-        nil;
-
-    _statusLabel =
-        nil;
-
-    _modeLabel =
-        nil;
-
-    _menuTable =
-        nil;
-
-    _menuVisible =
-        NO;
-
-
-    _floatingButton.hidden =
-        NO;
+    _floatingButton.hidden=NO;
 }
 
 @end
