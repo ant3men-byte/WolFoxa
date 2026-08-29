@@ -192,6 +192,119 @@ void WFAuditLogLocation(
 }
 
 
+void WFAuditLogFeature(
+    NSString *feature,
+    NSString *status,
+    NSString *details
+) {
+
+    NSString *safeFeature =
+        feature.length ? feature : @"unknown";
+
+    NSString *safeStatus =
+        status.length ? status : @"UNKNOWN";
+
+    NSString *safeDetails =
+        details.length ? details : @"";
+
+    NSString *message = nil;
+
+    if (safeDetails.length > 0) {
+        message =
+            [NSString stringWithFormat:
+                @"FEATURE=%@ | STATUS=%@ | %@",
+                safeFeature,
+                safeStatus,
+                safeDetails];
+    } else {
+        message =
+            [NSString stringWithFormat:
+                @"FEATURE=%@ | STATUS=%@",
+                safeFeature,
+                safeStatus];
+    }
+
+    WFAuditWrite(
+        @"FEATURE",
+        message
+    );
+}
+
+
+void WFAuditLogState(
+    NSString *source,
+    NSDictionary *snapshot
+) {
+
+    if (![snapshot isKindOfClass:[NSDictionary class]]) {
+
+        WFAuditWrite(
+            @"STATE",
+            [NSString stringWithFormat:
+                @"SOURCE=%@ | SNAPSHOT=nil",
+                source ?: @"unknown"]
+        );
+
+        return;
+    }
+
+    BOOL locationEnabled =
+        [snapshot[@"locationEnabled"] boolValue];
+
+    double lat =
+        [snapshot[@"currentLatitude"] doubleValue];
+
+    double lon =
+        [snapshot[@"currentLongitude"] doubleValue];
+
+    NSInteger locationMode =
+        [snapshot[@"locationMode"] integerValue];
+
+    BOOL movementActive =
+        [snapshot[@"movementActive"] boolValue];
+
+    BOOL movementPaused =
+        [snapshot[@"movementPaused"] boolValue];
+
+    BOOL randomActive =
+        [snapshot[@"randomMovementActive"] boolValue];
+
+    BOOL routeActive =
+        [snapshot[@"routeActive"] boolValue];
+
+    BOOL schedulerActive =
+        [snapshot[@"schedulerActive"] boolValue];
+
+    NSString *lastAction =
+        [snapshot[@"lastAction"] isKindOfClass:[NSString class]]
+            ? snapshot[@"lastAction"]
+            : @"";
+
+    NSString *lastError =
+        [snapshot[@"lastError"] isKindOfClass:[NSString class]]
+            ? snapshot[@"lastError"]
+            : @"";
+
+    WFAuditWrite(
+        @"STATE",
+        [NSString stringWithFormat:
+            @"SOURCE=%@ | locationEnabled=%@ | lat=%.8f | lon=%.8f | mode=%ld | movement=%@ | paused=%@ | random=%@ | route=%@ | scheduler=%@ | lastAction=%@ | lastError=%@",
+            source ?: @"unknown",
+            locationEnabled ? @"YES" : @"NO",
+            lat,
+            lon,
+            (long)locationMode,
+            movementActive ? @"YES" : @"NO",
+            movementPaused ? @"YES" : @"NO",
+            randomActive ? @"YES" : @"NO",
+            routeActive ? @"YES" : @"NO",
+            schedulerActive ? @"YES" : @"NO",
+            lastAction,
+            lastError]
+    );
+}
+
+
 NSString *WFAuditReadAll(void) {
 
     __block NSString *result = @"";
