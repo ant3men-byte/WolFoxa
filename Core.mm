@@ -17,6 +17,17 @@ NSString * const WFEventRuntimeStateChanged = @"wolfox.runtime.changed";
 NSString * const WFEventRouteProgressChanged = @"wolfox.route.progress.changed";
 NSString * const WFEventErrorOccurred = @"wolfox.error.occurred";
 
+
+static void WolFoxAuditRuntimeState(
+    NSString *source
+) {
+
+    WFAuditLogState(
+        source ?: @"Core",
+        [[WFRuntimeState sharedState] snapshotForUI]
+    );
+}
+
 #pragma mark - Runtime Hooks (CLLocationManager)
 
 static CLLocation *(*orig_location)(id, SEL) = NULL;
