@@ -5,7 +5,7 @@ include $(THEOS)/makefiles/common.mk
 
 LIBRARY_NAME = WolFox
 
-WolFox_FILES = Core.mm UI.mm Portable.cpp
+WolFox_FILES = Core.mm UI.mm Audit.mm Portable.cpp
 
 WolFox_FRAMEWORKS = Foundation UIKit CoreLocation MapKit
 
