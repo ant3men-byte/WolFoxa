@@ -668,26 +668,62 @@
     WFAuditLogFeature(
         @"goMyLocation",
         @"REQUESTED",
-        @"Reading MKMapView userLocation"
+        @"Reading current location with runtime fallback"
     );
 
     CLLocation *loc = _mapView.userLocation.location;
+    NSString *source = @"MKMapView.userLocation";
+
+    // MKMapView may temporarily return nil while its provider is starting.
+    // Preserve the working behavior by falling back to WolFox's active
+    // runtime coordinate when one is available.
+    if (!loc) {
+
+        WFRuntimeState *state =
+            [WFRuntimeState sharedState];
+
+        BOOL validRuntimeCoordinate =
+            state.locationEnabled &&
+            state.currentLatitude >= -90.0 &&
+            state.currentLatitude <= 90.0 &&
+            state.currentLongitude >= -180.0 &&
+            state.currentLongitude <= 180.0 &&
+            !(state.currentLatitude == 0.0 &&
+              state.currentLongitude == 0.0);
+
+        if (validRuntimeCoordinate) {
+
+            loc =
+                [[CLLocation alloc]
+                    initWithLatitude:state.currentLatitude
+                    longitude:state.currentLongitude];
+
+            source = @"WolFoxRuntime";
+
+            WFAuditLogFeature(
+                @"goMyLocation",
+                @"FALLBACK",
+                @"MKMapView location unavailable; using active WolFox runtime coordinate"
+            );
+        }
+    }
 
     if (!loc) {
 
         WFAuditLogFeature(
             @"goMyLocation",
             @"NO_LOCATION",
-            @"MKMapView userLocation.location is nil"
+            @"MKMapView location is nil and no valid active runtime coordinate exists"
         );
 
-        [self alert:@"\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u062d\u0627\u0644\u064a \u063a\u064a\u0631 \u0645\u062a\u0627\u062d."];
+        [self alert:
+            @"\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u062d\u0627\u0644\u064a \u063a\u064a\u0631 \u0645\u062a\u0627\u062d."];
 
         return;
     }
 
     WFAuditLogLocation(
-        @"goMyLocation",
+        [NSString stringWithFormat:@"goMyLocation.%@", source],
         loc
     );
 
@@ -699,7 +735,8 @@
         @"goMyLocation"
         status:@"SUCCESS"
         details:[NSString stringWithFormat:
-            @"selectedLat=%.8f | selectedLon=%.8f",
+            @"source=%@ | selectedLat=%.8f | selectedLon=%.8f",
+            source,
             loc.coordinate.latitude,
             loc.coordinate.longitude]];
 }
